@@ -25,7 +25,7 @@ CFLAGS := -fno-stack-protector	\
 LDFLAGS := $(EFI_LIB_PATH)crt0-efi-x86_64.o	\
 	-nostdlib								\
 	-znocombreloc							\
-	-T $(EFI_LIB_PATH)elf_x86_64_efi.lds	\
+	-T elf_x86_64_efi.lds					\
 	-shared									\
 	-Bsymbolic								\
 	-L $(EFI_LIB_PATH)						\
@@ -35,6 +35,7 @@ LDFLAGS := $(EFI_LIB_PATH)crt0-efi-x86_64.o	\
 OCFLAGS := -j .text			\
 	-j .sdata				\
 	-j .data				\
+	-j .bss					\
 	-j .dynamic				\
 	-j .dynsym				\
 	-j .rel					\
