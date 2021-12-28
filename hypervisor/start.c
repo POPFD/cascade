@@ -2,6 +2,7 @@
 #include <efilib.h>
 #include "platform/standard.h"
 #include "memory/pmem.h"
+#include "memory/vmem.h"
 
 BOOLEAN _DYNAMIC = TRUE;
  
@@ -14,6 +15,7 @@ efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
   debug_print(L"Hello world!\n");
 
   pmem_init();
+  vmem_init();
 
   debug_print(L"Exiting.\n");
 

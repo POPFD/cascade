@@ -10,11 +10,13 @@
 #include <stdbool.h>
 
 /* Size definitions */
+#define GiB(x) ((size_t)(x) << 30)
 #define MiB(x) ((size_t)(x) << 20)
 #define KiB(x) ((size_t)(x) << 10)
 
 /* Architecture definitions. */
 #define PAGE_SIZE 0x1000
+#define PAGE_MASK (PAGE_SIZE - 1)
 
 /* Utility macros */
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))

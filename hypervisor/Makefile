@@ -19,6 +19,7 @@ CFLAGS := -fno-stack-protector	\
 	-Werror						\
 	-I/usr/include/efi			\
 	-I/usr/include/efi/x86_64	\
+	-I../ia32-doc/out/			\
 	-I.							\
 	-DEFI_FUNCTION_WRAPPER
 
