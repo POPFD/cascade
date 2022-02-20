@@ -1,5 +1,7 @@
 #include <efi.h>
 #include <efilib.h>
+
+BOOLEAN _DYNAMIC = TRUE;
  
 EFI_STATUS
 EFIAPI

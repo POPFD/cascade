@@ -26,7 +26,6 @@ LDFLAGS := $(EFI_LIB_PATH)crt0-efi-x86_64.o	\
 	-nostdlib								\
 	-znocombreloc							\
 	-T elf_x86_64_efi.lds					\
-	-shared									\
 	-Bsymbolic								\
 	-L $(EFI_LIB_PATH)						\
 	-l:libgnuefi.a							\
