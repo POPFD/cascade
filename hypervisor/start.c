@@ -1,5 +1,7 @@
 #include <efi.h>
 #include <efilib.h>
+#include "platform/standard.h"
+#include "memory/pmem.h"
 
 BOOLEAN _DYNAMIC = TRUE;
  
@@ -8,6 +10,12 @@ EFIAPI
 efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
 {
   InitializeLib(ImageHandle, SystemTable);
-  Print(L"Hello, world!\n");
+  
+  debug_print(L"Hello world!\n");
+
+  pmem_init();
+
+  debug_print(L"Exiting.\n");
+
   return EFI_SUCCESS;
 }

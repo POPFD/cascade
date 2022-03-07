@@ -19,6 +19,7 @@ CFLAGS := -fno-stack-protector	\
 	-Werror						\
 	-I/usr/include/efi			\
 	-I/usr/include/efi/x86_64	\
+	-I.							\
 	-DEFI_FUNCTION_WRAPPER
 
 
@@ -46,11 +47,8 @@ OCFLAGS := -j .text			\
 C_FILES := $(shell find . -name '*.c')
 OBJ_FILES := $(patsubst %.c,%.o, $(C_FILES))
 
-.PHONY: all prep_dirs
-all: prep_dirs $(OUT_EFI_NAME)
-
-prep_dirs:
-	mkdir -p $(OUT_OBJ_DIR)
+.PHONY: all
+all: $(OUT_EFI_NAME)
 
 %.o: %.c
 	mkdir -p  $(OUT_OBJ_DIR)/$(dir $<)
@@ -60,4 +58,5 @@ $(OUT_SO_NAME): $(OBJ_FILES)
 	$(LD) -o $@ $(addprefix $(OUT_OBJ_DIR)/, $^) $(LDFLAGS)
 
 $(OUT_EFI_NAME): $(OUT_SO_NAME)
+	rm -f $(OUT_EFI_NAME)
 	$(OC) $(OCFLAGS) $^ $@
