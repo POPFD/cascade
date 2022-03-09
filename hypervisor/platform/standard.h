@@ -8,6 +8,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include "arch.h"
 
 /* Size definitions */
 #define GiB(x) ((size_t)(x) << 30)
@@ -22,6 +23,7 @@
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 #define NUMBER_BITS_TYPE(type) (sizeof(type) * 8)
 
+/* Debug printing */
 static inline void print_format(char *file, const char *func, int line, const CHAR16 *format, ...)
 {
     va_list marker;
