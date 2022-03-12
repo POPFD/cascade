@@ -3,6 +3,7 @@
 #include "platform/standard.h"
 #include "memory/pmem.h"
 #include "memory/vmem.h"
+#include "interrupt/idt.h"
 #include "vmm/vmm.h"
 
 BOOLEAN _DYNAMIC = TRUE;
@@ -17,6 +18,7 @@ efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
 
   pmem_init();
   vmem_init();
+  idt_init();
   vmm_init();
 
   debug_print(L"Exiting.\n");

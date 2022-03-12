@@ -23,6 +23,8 @@ CFLAGS := -fno-stack-protector	\
 	-I.							\
 	-DEFI_FUNCTION_WRAPPER
 
+ASMFLAGS := -f elf64 \
+	-Werror
 
 LDFLAGS := $(EFI_LIB_PATH)crt0-efi-x86_64.o	\
 	-nostdlib								\
@@ -46,7 +48,10 @@ OCFLAGS := -j .text			\
 
 # Use wildcards to gather all of the c files we need to find.
 C_FILES := $(shell find . -name '*.c')
-OBJ_FILES := $(patsubst %.c,%.o, $(C_FILES))
+C_OBJ_FILES := $(patsubst %.c,%.o, $(C_FILES))
+
+ASM_FILES := $(shell find . -name '*.asm')
+ASM_OBJ_FILES := $(patsubst %.asm,%.oasm, $(ASM_FILES))
 
 .PHONY: all
 all: $(OUT_EFI_NAME)
@@ -55,7 +60,11 @@ all: $(OUT_EFI_NAME)
 	mkdir -p  $(OUT_OBJ_DIR)/$(dir $<)
 	$(CC) -c -o $(OUT_OBJ_DIR)/$@ $< $(CFLAGS)
 
-$(OUT_SO_NAME): $(OBJ_FILES)
+%.oasm: %.asm
+	mkdir -p  $(OUT_OBJ_DIR)/$(dir $<)
+	nasm $< -o $(OUT_OBJ_DIR)/$@ $(ASMFLAGS)
+
+$(OUT_SO_NAME): $(C_OBJ_FILES) $(ASM_OBJ_FILES)
 	$(LD) -o $@ $(addprefix $(OUT_OBJ_DIR)/, $^) $(LDFLAGS)
 
 $(OUT_EFI_NAME): $(OUT_SO_NAME)
