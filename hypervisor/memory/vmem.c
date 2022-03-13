@@ -195,6 +195,11 @@ void *vmem_alloc(size_t size, unsigned int flags)
     }
 
     m_ctx->next_free_addr = end_addr;
+    die_on(m_ctx->next_free_addr < DYN_VMEM_START,
+           L"The virtual memory manager's next_free_addr has iterated back into the" \
+           L"identity mapped area, we should probably create an algorithm to reuse" \
+           L"freed memory ranges.");
+
     return (void *)start_addr;
 }
 
