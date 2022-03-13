@@ -1,6 +1,7 @@
 #include <efi.h>
 #include <efilib.h>
 #include "platform/standard.h"
+#include "platform/efi_plat.h"
 #include "memory/pmem.h"
 #include "memory/vmem.h"
 #include "interrupt/idt.h"
@@ -16,6 +17,7 @@ efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
   
   debug_print(L"Hello world!\n");
 
+  efi_plat_init(SystemTable);
   pmem_init();
   vmem_init();
   idt_init();

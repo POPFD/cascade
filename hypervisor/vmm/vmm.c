@@ -1,4 +1,5 @@
 #include "platform/standard.h"
+#include "platform/efi_plat.h"
 #include "ia32_compact.h"
 
 /* The main VMM that will initialise the hypervisor,
@@ -40,8 +41,21 @@ static void probe_capabilities()
     VMM_PRINT(L"CPU seems to provide all capabilities needed.\n");
 }
 
+static void init_routine_per_lp(void *opaque)
+{
+    size_t proc_idx;
+    efi_plat_processor_index(&proc_idx);
+
+    (void)opaque;
+
+    VMM_PRINT(L"Running on LP %ld.\n", proc_idx);
+}
+
 void vmm_init(void)
 {
     /* Make sure the CPU supports all of the features required. */
     probe_capabilities();
+
+    /* Run the initialisation routine on each LP. */
+    efi_plat_run_all_processors(init_routine_per_lp, NULL);
 }
