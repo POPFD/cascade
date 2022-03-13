@@ -1,7 +1,6 @@
 #include "platform/standard.h"
 #include "platform/intrin.h"
 #include "idt.h"
-#include "ia32_compact.h"
 
 struct idt_entry {
     uint16_t offset_15_to_0;
@@ -40,13 +39,19 @@ struct exception_stack {
 	rfl r_flags;
 };
 
+#define DEBUG_IDT
+#ifdef DEBUG_IDT
+    #define IDT_PRINT(...) debug_print(__VA_ARGS__)
+#else
+    #define IDT_PRINT(...)
+#endif
+
 #define IDT_ENTRY_COUNT 256
 
 /* The IDT handler function, this is written in NASM rather
  * than in C as we need full control of what goes on. */
 extern void *isr_stub_table[];
 
-__attribute__((aligned(0x10))) static segment_descriptor_register_64 idtr;
 __attribute__((aligned(0x10))) static struct idt_entry idt_table[IDT_ENTRY_COUNT] = { 0 };
 
 static void set_entry(uint8_t vector, void *isr, uint8_t gate_type)
@@ -70,18 +75,27 @@ static void set_entry(uint8_t vector, void *isr, uint8_t gate_type)
 void idt_exception_handler(const struct exception_stack *stack)
 {
     /* For now, just hang the computer until we have something better to do. */
-    (void)stack;
-    __asm__ volatile("cli; hlt");
+    IDT_PRINT(L"Interrupt number %d error code %d\n", stack->interrupt_number, stack->error_code);
 }
 
-void idt_init(void)
+void idt_init(segment_descriptor_register_64 *orig_idtr, segment_descriptor_register_64 *new_idtr)
 {
+    /* Store the original IDTR. */
+    __sidt(orig_idtr);
+    IDT_PRINT(L"Original IDTR base_addr %lX limit %X\n",
+              orig_idtr->base_address, orig_idtr->limit);
+
     /* Create the IDTR. */
-    idtr.base_address = (uintptr_t)&idt_table[0];
-    idtr.limit = (uint16_t)sizeof(struct idt_entry) * IDT_ENTRY_COUNT - 1;
+    new_idtr->base_address = (uintptr_t)&idt_table[0];
+    new_idtr->limit = (uint16_t)sizeof(struct idt_entry) * IDT_ENTRY_COUNT - 1;
 
     /* Fill out all of the IDT entries with their relevant stubs. */
     for (int i = 0; i < IDT_ENTRY_COUNT; i++) {
         set_entry(i, isr_stub_table[i], SEGMENT_DESCRIPTOR_TYPE_INTERRUPT_GATE);
     }
+
+    /* Load the new IDTR in place. */
+    __lidt(new_idtr);
+    IDT_PRINT(L"New IDTR base_addr %lX limit %X\n",
+              new_idtr->base_address, new_idtr->limit);
 }

@@ -24,7 +24,7 @@ efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
   efi_plat_init(SystemTable);
   pmem_init();
   vmem_init(&vmm_params.guest_cr3, &vmm_params.host_cr3);
-  idt_init();
+  idt_init(&vmm_params.guest_idtr, &vmm_params.host_idtr);
   vmm_init(&vmm_params);
 
   debug_print(L"Exiting.\n");

@@ -6,5 +6,7 @@
 extern __attribute__((ms_abi)) uint16_t __readcs();
 extern __attribute__((ms_abi)) uint64_t __readcr3();
 extern __attribute__((ms_abi)) void __writecr3(uint64_t cr3);
+extern __attribute__((ms_abi)) void __lidt(void *idt);
+extern __attribute__((ms_abi)) void __sidt(void *idt);
 
 #endif /* INTRIN_H */

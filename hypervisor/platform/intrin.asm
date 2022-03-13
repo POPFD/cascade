@@ -3,6 +3,8 @@ section .text
 global __readcs
 global __readcr3
 global __writecr3
+global __lidt
+global __sidt
 
 __readcs:
     mov ax, cs
@@ -14,4 +16,12 @@ __readcr3:
 
 __writecr3:
     mov cr3, rcx
+    ret
+
+__lidt:
+    lidt [rcx]
+    ret
+
+__sidt:
+    sidt [rcx]
     ret
