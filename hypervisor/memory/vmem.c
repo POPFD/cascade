@@ -1,7 +1,7 @@
 #include "platform/standard.h"
+#include "platform/intrin.h"
 #include "memory/pmem.h"
 #include "memory/vmem.h"
-#include "ia32_compact.h"
 
 /* Standalone virtual memory manager.
  * This module created the page tables required to implement virtual memory
@@ -68,7 +68,7 @@ static void init_identity_table(struct vmem_ctx *ctx)
     for (size_t i = 0; i < 512; i++) {
         ctx->identity_pdpt[i].present = true;
         ctx->identity_pdpt[i].write = true;
-        ctx->identity_pdpt[i].execute_disable = true;
+        ctx->identity_pdpt[i].execute_disable = false;
         ctx->identity_pdpt[i].large_page = true;
         ctx->identity_pdpt[i].page_frame_number = i;
     }
@@ -136,8 +136,12 @@ static void create_table_entries(uintptr_t addr, bool write, bool exec)
                 pte->page_frame_number * PAGE_SIZE);
 }
 
-void vmem_init(void)
+void vmem_init(cr3 *original_cr3, cr3 *new_cr3)
 {
+    /* Store the original CR3 value before initialising the virtual-memory manager. */
+    original_cr3->flags = __readcr3();
+    VMEM_PRINT(L"Storing original CR3 %lX\n", original_cr3->flags);
+
     /*
      * Allocated a page for the vmem context.
      * Unfortunately as we are the virtual memory manager we cannot
@@ -155,6 +159,13 @@ void vmem_init(void)
 
     /* Set the next free address in the dynamic allocator. */
     m_ctx->next_free_addr = DYN_VMEM_START;
+
+    /* Write the new CR3 value so that the memory manager is used. */
+    new_cr3->page_level_cache_disable = original_cr3->page_level_cache_disable;
+    new_cr3->page_level_write_through = original_cr3->page_level_write_through;
+    new_cr3->address_of_page_directory = ((uintptr_t)m_ctx->pml4) / PAGE_SIZE;
+    __writecr3(new_cr3->flags);
+    VMEM_PRINT(L"New CR3 value loaded %lX\n", new_cr3->flags);
 }
 
 void *vmem_alloc(size_t size, unsigned int flags)
