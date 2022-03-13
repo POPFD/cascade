@@ -44,7 +44,8 @@ OCFLAGS := -j .text			\
 	-j .rel					\
 	-j .rela				\
 	-j .reloc				\
-	--target=efi-app-x86_64
+	--subsystem efi-rtd		\
+	--target=efi-app-x86_64 \
 
 # Use wildcards to gather all of the c files we need to find.
 C_FILES := $(shell find . -name '*.c')

@@ -1,3 +1,6 @@
 [submodule "ia32-doc"]
 	path = ia32-doc
 	url = https://github.com/wbenny/ia32-doc.git
+[submodule "uefi-run"]
+	path = uefi-run
+	url = git@github.com:POPFD/uefi-run.git
