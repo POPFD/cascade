@@ -50,8 +50,9 @@ struct exception_stack {
 
 /* The IDT handler function, this is written in NASM rather
  * than in C as we need full control of what goes on. */
-extern void *isr_stub_table[];
+extern void *isr_offset_table[];
 
+/* The descriptor table that holds an IDT entry for each vector. */
 __attribute__((aligned(0x10))) static struct idt_entry idt_table[IDT_ENTRY_COUNT] = { 0 };
 
 static void set_entry(uint8_t vector, void *isr, uint8_t gate_type)
@@ -75,7 +76,8 @@ static void set_entry(uint8_t vector, void *isr, uint8_t gate_type)
 void idt_exception_handler(const struct exception_stack *stack)
 {
     /* For now, just hang the computer until we have something better to do. */
-    IDT_PRINT(L"Interrupt number %d error code %d\n", stack->interrupt_number, stack->error_code);
+    IDT_PRINT(L"rip %lX vec 0x%X[%d] err %d\n",
+              stack->rip, stack->interrupt_number, stack->interrupt_number, stack->error_code);
 }
 
 void idt_init(segment_descriptor_register_64 *orig_idtr, segment_descriptor_register_64 *new_idtr)
@@ -91,10 +93,11 @@ void idt_init(segment_descriptor_register_64 *orig_idtr, segment_descriptor_regi
 
     /* Fill out all of the IDT entries with their relevant stubs. */
     for (int i = 0; i < IDT_ENTRY_COUNT; i++) {
-        set_entry(i, isr_stub_table[i], SEGMENT_DESCRIPTOR_TYPE_INTERRUPT_GATE);
+        uintptr_t offset = (uintptr_t)isr_offset_table[i];
+        uintptr_t isr_base = offset + (uintptr_t)isr_offset_table;
+        set_entry(i, (void *)isr_base, SEGMENT_DESCRIPTOR_TYPE_INTERRUPT_GATE);
     }
 
-    /* Load the new IDTR in place. */
     __lidt(new_idtr);
     IDT_PRINT(L"New IDTR base_addr %lX limit %X\n",
               new_idtr->base_address, new_idtr->limit);

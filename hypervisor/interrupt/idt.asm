@@ -42,19 +42,17 @@ extern idt_exception_handler
 
 %macro isr_err_stub 1
 isr_stub_%+%1:
-    nop
-    nop
+    cli
     push %1
-    call common_exception_handler
-    iretq ; Using iretq as we are x64
+    jmp common_exception_handler
 %endmacro
 
 %macro isr_no_err_stub 1
 isr_stub_%+%1:
+    cli
     push 0
     push %1
-    call common_exception_handler
-    iretq ; Using iretq as we are x64
+    jmp common_exception_handler
 %endmacro
 
 isr_no_err_stub 0
@@ -95,21 +93,20 @@ isr_no_err_stub 31
 %assign i i+1
 %endrep
 
-global isr_stub_table
-isr_stub_table:
+global isr_offset_table
+isr_offset_table:
 %assign i 0 
 %rep    256 
-    dq isr_stub_%+i ; Using DQ as we are x64
+    dq (isr_stub_%+i - isr_offset_table) ; Using DQ as we are x64
 %assign i i+1 
 %endrep
 
 common_exception_handler:
     pushaq
-    mov rcx, rsp
-    sub rsp, 20h
+    mov rdi, rsp
     call idt_exception_handler
-    add rsp, 20h
     popaq
     add rsp, 10h
+    sti
     iretq
     
