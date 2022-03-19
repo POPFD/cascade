@@ -39,7 +39,7 @@ struct exception_stack {
 	rfl r_flags;
 };
 
-#define DEBUG_IDT
+//#define DEBUG_IDT
 #ifdef DEBUG_IDT
     #define IDT_PRINT(...) debug_print(__VA_ARGS__)
 #else
@@ -75,6 +75,7 @@ static void set_entry(uint8_t vector, void *isr, uint8_t gate_type)
 /* The exception handler that the common IDT stub function will call. */
 void idt_exception_handler(const struct exception_stack *stack)
 {
+    (void)stack;
     /* For now, just hang the computer until we have something better to do. */
     IDT_PRINT(L"rip %lX vec 0x%X[%d] err %d\n",
               stack->rip, stack->interrupt_number, stack->interrupt_number, stack->error_code);
