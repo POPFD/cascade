@@ -8,12 +8,21 @@
 #include "vmm/vmm.h"
 
 BOOLEAN _DYNAMIC = TRUE;
+
+
  
 EFI_STATUS
 EFIAPI
 efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
 {
   InitializeLib(ImageHandle, SystemTable);
+
+//#define DEBUG_IDA
+#ifdef DEBUG_IDA
+  static volatile int wait_debug = 0;
+
+  while (!wait_debug) {}
+#endif
   
   debug_print(L"Hello world!\n");
 
