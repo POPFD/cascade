@@ -3,7 +3,7 @@
 
 #include "platform/standard.h"
 
-typedef void (*fn_callback_routine)(void *opaque);
+typedef void (__attribute__((ms_abi)) *fn_callback_routine)(void *opaque);
 
 void efi_plat_init(EFI_SYSTEM_TABLE *st);
 void efi_plat_run_all_processors(fn_callback_routine routine, void *opaque);

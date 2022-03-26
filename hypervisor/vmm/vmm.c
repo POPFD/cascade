@@ -1,5 +1,7 @@
 #include "platform/standard.h"
 #include "platform/efi_plat.h"
+#include "platform/intrin.h"
+#include "memory/vmem.h"
 #include "vmm.h"
 #include "ia32_compact.h"
 
@@ -12,6 +14,20 @@
 #else
     #define VMM_PRINT(...)
 #endif
+
+/* At max, support up to 100 vCPUs. */
+#define VCPU_MAX 100
+
+/* Holds the global context for the VMM. */
+struct vmm_ctx {
+    struct vmm_init_params init;
+    struct vcpu_ctx *vcpu[VCPU_MAX];
+};
+
+/* Holds the context specific to a singular vCPU. */
+struct vcpu_ctx {
+    void *reserved;
+};
 
 static void probe_capabilities()
 {
@@ -42,14 +58,29 @@ static void probe_capabilities()
     VMM_PRINT(L"CPU seems to provide all capabilities needed.\n");
 }
 
-static void init_routine_per_lp(void *opaque)
+static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
 {
+    struct vmm_ctx *vmm = (struct vmm_ctx *)opaque;
+
+    /* Ensure that the correct host IDT and CR3 are loaded for this vCPU.
+     * This SHOULD be the case for vCPU 0 as they were originally set during
+     * the initialisation of the modules, however for other vCPU's they
+     * will be set to what they were before the hyperjack. */
+    __writecr3(vmm->init.host_cr3.flags);
+    __lidt(&vmm->init.host_idtr);
+
     size_t proc_idx;
     efi_plat_processor_index(&proc_idx);
+    die_on(proc_idx >= VCPU_MAX, L"vCPU index greater than supported by VMM.");
 
-    (void)opaque;
+    /* Create the vCPU context structure. */
+    struct vcpu_ctx *vcpu = vmem_alloc(sizeof(struct vcpu_ctx), MEM_WRITE);
+    die_on(!vcpu, L"Unable to allocate vCPU %ld context.", proc_idx);
 
-    VMM_PRINT(L"Running on LP %ld.\n", proc_idx);
+    /* Set the global context so that it includes this vCPU's context pointer. */
+    vmm->vcpu[proc_idx] = vcpu;
+
+    VMM_PRINT(L"Running on LP %ld vmm ctx 0x%lX vcpu ctx 0x%lX.\n", proc_idx, vmm, vcpu);
 }
 
 void vmm_init(struct vmm_init_params *params)
@@ -57,6 +88,13 @@ void vmm_init(struct vmm_init_params *params)
     /* Make sure the CPU supports all of the features required. */
     probe_capabilities();
 
+    /* Static allocation of the global vCPU context. This has to be
+     * static rather than dynamically allocated as the other vCPUs
+     * that are started will not have the host CR3 set, hence they
+     * will not have access to our dynamically allocated memory. */
+    static struct vmm_ctx vmm = { 0 };
+    memcpy(&vmm.init, params, sizeof(*params));
+
     /* Run the initialisation routine on each LP. */
-    efi_plat_run_all_processors(init_routine_per_lp, params);
+    efi_plat_run_all_processors(init_routine_per_vcpu, &vmm);
 }
