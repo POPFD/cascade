@@ -16,5 +16,6 @@ extern __attribute__((ms_abi)) void __sgdt(void *gdt);
 extern __attribute__((ms_abi)) void __lldt(void *ldt);
 extern __attribute__((ms_abi)) void __sldt(void *ldt);
 extern __attribute__((ms_abi)) void __str(void *tr);
+extern __attribute__((ms_abi)) void __ltr(void *tr);
 
 #endif /* INTRIN_H */

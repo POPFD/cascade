@@ -2,6 +2,7 @@
 #include "platform/efi_plat.h"
 #include "platform/intrin.h"
 #include "memory/vmem.h"
+#include "memory/mem.h"
 #include "vmm.h"
 #include "vmm_reg.h"
 #include "ia32_compact.h"
@@ -28,6 +29,7 @@ struct vmm_ctx {
 /* Holds the context specific to a singular vCPU. */
 struct vcpu_ctx {
     struct control_registers guest_ctrl_regs;
+    struct gdt_config gdt_cfg;
 };
 
 static void probe_capabilities()
@@ -57,6 +59,87 @@ static void probe_capabilities()
     die_on(!ept_vpid.pde_2mb_pages, L"EPT 2MB pages not supported.");
 
     VMM_PRINT(L"CPU seems to provide all capabilities needed.\n");
+}
+
+static void print_gdt(CHAR16 *prefix, segment_descriptor_register_64 *gdtr)
+{
+    VMM_PRINT(L"--- %s GDT base %lX limit %lX\n", prefix, gdtr->base_address, gdtr->limit);
+
+    segment_descriptor_64 *start_desc = (segment_descriptor_64 *)gdtr->base_address;
+    segment_descriptor_64 *end_desc = (segment_descriptor_64 *)(gdtr->base_address + gdtr->limit);
+
+    for (segment_descriptor_64 *curr_desc = start_desc; curr_desc <= end_desc; curr_desc++) {
+        VMM_PRINT(L"------ Descriptor %lX\n", (uintptr_t)curr_desc);
+        VMM_PRINT(L"------ Flags %X\n", curr_desc->flags);
+        VMM_PRINT(L"------ Must be zero %X\n", curr_desc->must_be_zero);
+        VMM_PRINT(L"------ Present %X\n", curr_desc->present);
+        VMM_PRINT(L"------ Type %X\n", curr_desc->type);
+        VMM_PRINT(L"------ Segment limit %X\n",
+                  (curr_desc->segment_limit_high << 16) | curr_desc->segment_limit_low);
+
+        uintptr_t base_addr = ((uintptr_t)curr_desc->base_address_upper << 32) |
+                              (curr_desc->base_address_high << 24) |
+                              (curr_desc->base_address_middle << 16) |
+                              (curr_desc->base_address_low & UINT16_MAX);
+        VMM_PRINT(L"------ Base address %lX\n\n", base_addr);
+    }
+}
+
+static void configure_vcpu_gdt(struct gdt_config *gdt_cfg)
+{
+    /* Read the original GDTR and store it so we can use it for the guest later. */
+    __sgdt(&gdt_cfg->guest_gdtr);
+
+    print_gdt(L"Guest", &gdt_cfg->guest_gdtr);
+
+    /* For the host GDT we're going to copy the guest GDT and then append
+     * a TSS to the GDT as this is required for VMX to be used, unfortunately
+     * the UEFI environment doesn't set this up. */
+    memcpy(gdt_cfg->host_gdt,
+           (const void *)gdt_cfg->guest_gdtr.base_address,
+           gdt_cfg->guest_gdtr.limit);
+
+    /* Append the TR to the end of the GDT. */
+    gdt_cfg->host_tr.flags = 0;
+    gdt_cfg->host_tr.index = (gdt_cfg->guest_gdtr.limit + 1ull) / sizeof(segment_descriptor_32);
+    VMM_PRINT(L"Host TR index %d\n", gdt_cfg->host_tr.index);
+
+    /* Configure the GDTR we're going to use for the host. */
+    gdt_cfg->host_gdtr.base_address = (uint64_t)gdt_cfg->host_gdt;
+    gdt_cfg->host_gdtr.limit = gdt_cfg->guest_gdtr.limit + sizeof(segment_descriptor_64);
+
+    print_gdt(L"Host pre-adjust", &gdt_cfg->host_gdtr);
+
+    /* Now we need to configure the GDT entry for the TR.
+     * The addresses used should be physical addresses.*/
+    cr3 this_cr3;
+    this_cr3.flags = __readcr3();
+    uintptr_t tss_pa = mem_va_to_pa(this_cr3, &gdt_cfg->host_tss);
+
+    segment_descriptor_64 tss_desc = {};
+    tss_desc.flags = 0;
+    tss_desc.must_be_zero = 0;
+    tss_desc.segment_limit_low = sizeof(struct task_state_segment_64) - 1;
+    tss_desc.base_address_low = tss_pa & UINT16_MAX;
+    tss_desc.base_address_middle = (tss_pa >> 16) & UINT8_MAX;
+    tss_desc.base_address_high = (tss_pa >> 24) & UINT8_MAX;
+    tss_desc.base_address_upper = (tss_pa >> 32) & UINT32_MAX;
+    tss_desc.type = SEGMENT_DESCRIPTOR_TYPE_TSS_AVAILABLE;
+    tss_desc.present = true;
+
+    /* Now write the newly created TSS to our host GDT. */
+    segment_descriptor_32 *gdt32 = (segment_descriptor_32 *)gdt_cfg->host_gdt;
+    segment_descriptor_64 *tss_in_gdt = (segment_descriptor_64 *)&gdt32[gdt_cfg->host_tr.index];
+    *tss_in_gdt = tss_desc;
+
+    print_gdt(L"Host", &gdt_cfg->host_gdtr);
+
+    /* Write the new GDTR and TR. */
+    uintptr_t phys_gdtr = mem_va_to_pa(this_cr3, &gdt_cfg->host_gdtr);
+    VMM_PRINT(L"Host GDTR VA %lX PA %lX\n", &gdt_cfg->host_gdtr, phys_gdtr);
+
+    __lgdt(&phys_gdtr);
+    __ltr(&gdt_cfg->host_tr);
 }
 
 static void capture_control_regs(struct control_registers *regs)
@@ -99,6 +182,9 @@ static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
 
     /* Capturing control registers for the vCPU (as to what the guest should see). */
     capture_control_regs(&vcpu->guest_ctrl_regs);
+
+    /* Configure the host GDT. */
+    configure_vcpu_gdt(&vcpu->gdt_cfg);
 }
 
 void vmm_init(struct vmm_init_params *params)

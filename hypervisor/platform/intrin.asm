@@ -13,6 +13,7 @@ global __sgdt
 global __lldt
 global __sldt
 global __str
+global __ltr
 
 __readcs:
     mov ax, cs
@@ -64,4 +65,8 @@ __sldt:
 
 __str:
     str word [rcx]
+    ret
+
+__ltr:
+    ltr word [rcx]
     ret
