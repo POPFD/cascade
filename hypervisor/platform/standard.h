@@ -19,6 +19,15 @@
 #define PAGE_SIZE 0x1000
 #define PAGE_MASK (PAGE_SIZE - 1)
 
+#define ADDRMASK_PML4_INDEX(addr)   (((size_t)addr & 0xFF8000000000ULL) >> 39)
+#define ADDRMASK_PDPTE_INDEX(addr)  (((size_t)addr & 0x7FC0000000ULL) >> 30)
+#define ADDRMASK_PDE_INDEX(addr)    (((size_t)addr & 0x3FE00000ULL) >> 21)
+#define ADDRMASK_PTE_INDEX(addr)    (((size_t)addr & 0x1FF000ULL) >> 12)
+
+#define ADDRMASK_PDPTE_OFFSET(_VAR_)    ((size_t)_VAR_ & 0x3FFFFFFFULL)
+#define ADDRMASK_PDE_OFFSET(_VAR_)      ((size_t)_VAR_ & 0x1FFFFFULL)
+#define ADDRMASK_PTE_OFFSET(addr)       ((size_t)addr & 0xFFFULL)
+
 /* Utility macros */
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 #define NUMBER_BITS_TYPE(type) (sizeof(type) * 8)

@@ -27,13 +27,6 @@
 #endif
 
 #define ENTRIES_PER_TABLE 512
-
-#define ADDRMASK_PML4_INDEX(addr)   (((size_t)addr & 0xFF8000000000ULL) >> 39)
-#define ADDRMASK_PDPTE_INDEX(addr)  (((size_t)addr & 0x7FC0000000ULL) >> 30)
-#define ADDRMASK_PDE_INDEX(addr)    (((size_t)addr & 0x3FE00000ULL) >> 21)
-#define ADDRMASK_PTE_INDEX(addr)    (((size_t)addr & 0x1FF000ULL) >> 12)
-#define ADDRMASK_PTE_OFFSET(addr)   ((size_t)addr & 0xFFFULL)
-
 #define DYN_VMEM_START GiB(512)
 
 struct vmem_ctx {
