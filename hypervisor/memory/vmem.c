@@ -2,6 +2,7 @@
 #include "platform/intrin.h"
 #include "memory/pmem.h"
 #include "memory/vmem.h"
+#include "memory/mem.h"
 
 /* Standalone virtual memory manager.
  * This module created the page tables required to implement virtual memory
@@ -127,6 +128,18 @@ static void create_table_entries(uintptr_t addr, bool write, bool exec)
     VMEM_PRINT(L"--- Allocated pmem PFN[ADDR] %lX[%lX]\n",
                 pte->page_frame_number,
                 pte->page_frame_number * PAGE_SIZE);
+
+#ifdef DEBUG_VMEM
+    /* Some debug code that ensures that the created PA matches if we
+     * traverse the VA back to PA. */
+    cr3 tmp_cr3;
+    tmp_cr3.flags = __readcr3();
+    uintptr_t actual_pa = pte->page_frame_number * PAGE_SIZE;
+    uintptr_t calc_pa = mem_va_to_pa(tmp_cr3, (void *)addr);
+    die_on(actual_pa != calc_pa,
+           L"Physical addr %lX does not match calculated physical addr %lX\n",
+           actual_pa, calc_pa);
+#endif
 }
 
 void vmem_init(cr3 *original_cr3, cr3 *new_cr3)
