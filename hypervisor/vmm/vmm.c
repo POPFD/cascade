@@ -3,6 +3,7 @@
 #include "platform/intrin.h"
 #include "memory/vmem.h"
 #include "vmm.h"
+#include "vmm_reg.h"
 #include "ia32_compact.h"
 
 /* The main VMM that will initialise the hypervisor,
@@ -26,7 +27,7 @@ struct vmm_ctx {
 
 /* Holds the context specific to a singular vCPU. */
 struct vcpu_ctx {
-    void *reserved;
+    struct control_registers guest_ctrl_regs;
 };
 
 static void probe_capabilities()
@@ -58,6 +59,20 @@ static void probe_capabilities()
     VMM_PRINT(L"CPU seems to provide all capabilities needed.\n");
 }
 
+static void capture_control_regs(struct control_registers *regs)
+{
+    regs->reg_cr0.flags = __readcr0();
+    regs->reg_cr3.flags = __readcr3();
+    regs->reg_cr4.flags = __readcr4();
+    regs->debugctl.flags = rdmsr(IA32_DEBUGCTL);
+    regs->gs_base = rdmsr(IA32_GS_BASE);
+    regs->dr7 = __readdr7();
+
+    VMM_PRINT(L"--- cr0 %lX cr3 %lX cr4 %lX debugctl %lX gs_base %lX dr7 %lX\n",
+              regs->reg_cr0.flags, regs->reg_cr3.flags, regs->reg_cr4.flags,
+              regs->debugctl.flags, regs->gs_base, regs->dr7);
+}
+
 static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
 {
     struct vmm_ctx *vmm = (struct vmm_ctx *)opaque;
@@ -80,7 +95,10 @@ static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
     /* Set the global context so that it includes this vCPU's context pointer. */
     vmm->vcpu[proc_idx] = vcpu;
 
-    VMM_PRINT(L"Running on LP %ld vmm ctx 0x%lX vcpu ctx 0x%lX.\n", proc_idx, vmm, vcpu);
+    VMM_PRINT(L"Initialising vCPU %ld vmm ctx 0x%lX vcpu ctx 0x%lX.\n", proc_idx, vmm, vcpu);
+
+    /* Capturing control registers for the vCPU (as to what the guest should see). */
+    capture_control_regs(&vcpu->guest_ctrl_regs);
 }
 
 void vmm_init(struct vmm_init_params *params)
