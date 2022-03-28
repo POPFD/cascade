@@ -29,7 +29,10 @@ struct vmm_ctx {
 /* Holds the context specific to a singular vCPU. */
 struct vcpu_ctx {
     struct control_registers guest_ctrl_regs;
+    struct vcpu_context guest_context;
     struct gdt_config gdt_cfg;
+
+    bool running_as_guest;
 };
 
 static void probe_capabilities()
@@ -94,6 +97,8 @@ static void configure_vcpu_gdt(struct gdt_config *gdt_cfg)
 
     /* Read the original GDTR and store it so we can use it for the guest later. */
     __sgdt(&gdt_cfg->guest_gdtr);
+    die_on(!gdt_cfg->guest_gdtr.base_address, L"No base address set for guest GDTR");
+    die_on(!gdt_cfg->guest_gdtr.limit, L"No limit set for guest GDTR");
 
     /* For the host GDT we're going to copy the guest GDT and then append
      * a TSS to the GDT as this is required for VMX to be used, unfortunately
@@ -176,11 +181,29 @@ static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
 
     VMM_PRINT(L"Initialising vCPU %ld vmm ctx 0x%lX vcpu ctx 0x%lX.\n", proc_idx, vmm, vcpu);
 
-    /* Capturing control registers for the vCPU (as to what the guest should see). */
-    capture_control_regs(&vcpu->guest_ctrl_regs);
-
     /* Configure the host GDT. */
     configure_vcpu_gdt(&vcpu->gdt_cfg);
+
+    /* Capturing control registers & context for the vCPU,
+     * as to what the guest should be restored to once hyperjacked. */
+    capture_control_regs(&vcpu->guest_ctrl_regs);
+    __capture_context(&vcpu->guest_context);
+
+    /* First pass (before hypervised) this shall be false as we
+     * haven't hyperjacked yet. Upon restoration of the context
+     * from within the guest (which will lead us up to just after __capture_context)
+     * we need to do nothing and effectively "complete" loading of the driver. */
+    if (!vcpu->running_as_guest) {
+        /* Enter VMX root mode. */
+
+        /* Set up VMCS */
+
+        /* Attempt VMLAUNCH. */
+
+        /* If we have got to this point,
+         * VMLAUNCH failed, therefore we get failure
+         * reason and dump. */
+    }
 }
 
 void vmm_init(struct vmm_init_params *params)

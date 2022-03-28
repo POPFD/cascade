@@ -17,5 +17,7 @@ extern __attribute__((ms_abi)) void __lldt(void *ldt);
 extern __attribute__((ms_abi)) void __sldt(void *ldt);
 extern __attribute__((ms_abi)) void __str(void *tr);
 extern __attribute__((ms_abi)) void __ltr(void *tr);
+extern __attribute__((ms_abi)) void __capture_context(void *context);
+extern __attribute__((ms_abi)) void __restore_context(void *context);
 
 #endif /* INTRIN_H */
