@@ -5,7 +5,9 @@ global __readcr0
 global __readcr3
 global __readcr4
 global __readdr7
+global __writecr0
 global __writecr3
+global __writecr4
 global __lidt
 global __sidt
 global __lgdt
@@ -14,6 +16,9 @@ global __lldt
 global __sldt
 global __str
 global __ltr
+global __vmxon
+global __vmclear
+global __vmptrld
 global __capture_context
 global __restore_context
 
@@ -37,8 +42,16 @@ __readdr7:
     mov rax, dr7
     ret
 
+__writecr0:
+    mov cr0, rcx
+    ret
+
 __writecr3:
     mov cr3, rcx
+    ret
+
+__writecr4:
+    mov cr4, rcx
     ret
 
 __lidt:
@@ -71,6 +84,18 @@ __str:
 
 __ltr:
     ltr word [rcx]
+    ret
+
+__vmxon:
+    vmxon [rcx]
+    ret
+
+__vmclear:
+    vmclear [rcx]
+    ret
+
+__vmptrld:
+    vmptrld [rcx]
     ret
 
 __capture_context:

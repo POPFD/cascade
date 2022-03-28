@@ -28,6 +28,9 @@ struct vmm_ctx {
 
 /* Holds the context specific to a singular vCPU. */
 struct vcpu_ctx {
+    __attribute__ ((aligned (PAGE_SIZE))) vmxon host_vmxon;
+    __attribute__ ((aligned (PAGE_SIZE))) vmcs guest_vmcs;
+
     struct control_registers guest_ctrl_regs;
     struct vcpu_context guest_context;
     struct gdt_config gdt_cfg;
@@ -157,6 +160,39 @@ static void capture_control_regs(struct control_registers *regs)
               regs->debugctl.flags, regs->gs_base, regs->dr7);
 }
 
+static void enter_root_mode(struct vcpu_ctx *vcpu)
+{
+    /* Set up root VMXON and the guest VMCS. */
+    ia32_vmx_basic_register basic;
+    basic.flags = rdmsr(IA32_VMX_BASIC);
+
+    memset(&vcpu->host_vmxon, 0, sizeof(vcpu->host_vmxon));
+    memset(&vcpu->guest_vmcs, 0, sizeof(vcpu->guest_vmcs));
+    vcpu->host_vmxon.revision_id = basic.vmcs_revision_id;
+    vcpu->guest_vmcs.revision_id = basic.vmcs_revision_id;
+
+    /* Set the fixed requirements for the control registers for VMX. */
+    vcpu->guest_ctrl_regs.reg_cr0.flags &= (uint32_t)rdmsr(IA32_VMX_CR0_FIXED1);
+    vcpu->guest_ctrl_regs.reg_cr0.flags |= (uint32_t)rdmsr(IA32_VMX_CR0_FIXED0);
+
+    vcpu->guest_ctrl_regs.reg_cr4.flags &= (uint32_t)rdmsr(IA32_VMX_CR4_FIXED1);
+    vcpu->guest_ctrl_regs.reg_cr4.flags |= (uint32_t)rdmsr(IA32_VMX_CR4_FIXED0);
+
+    /* Update host CR0/4 with new updated fields. */
+    __writecr0(vcpu->guest_ctrl_regs.reg_cr0.flags);
+    __writecr4(vcpu->guest_ctrl_regs.reg_cr4.flags);
+
+    /* Calculate the physical addresses of vmxon and vmcs. */
+    cr3 this_cr3;
+    this_cr3.flags = __readcr3();
+    void *phys_vmxon = (void *)mem_va_to_pa(this_cr3, &vcpu->host_vmxon);
+    void *phys_vmcs = (void *)mem_va_to_pa(this_cr3, &vcpu->guest_vmcs);
+
+    die_on(!__vmxon(&phys_vmxon), L"Unable to enter VMX root mode.");
+    die_on(!__vmclear(&phys_vmcs), L"Unable to clear VMCS.");
+    die_on(!__vmptrld(&phys_vmcs), L"Unable to load the VMCS.");
+}
+
 static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
 {
     struct vmm_ctx *vmm = (struct vmm_ctx *)opaque;
@@ -194,7 +230,7 @@ static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
      * from within the guest (which will lead us up to just after __capture_context)
      * we need to do nothing and effectively "complete" loading of the driver. */
     if (!vcpu->running_as_guest) {
-        /* Enter VMX root mode. */
+        enter_root_mode(vcpu);
 
         /* Set up VMCS */
 
