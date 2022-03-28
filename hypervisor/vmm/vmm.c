@@ -23,6 +23,8 @@
 
 /* Holds the global context for the VMM. */
 struct vmm_ctx {
+    __attribute__ ((aligned (PAGE_SIZE))) uint8_t msr_trap_bitmap[PAGE_SIZE];
+
     struct vmm_init_params init;
     struct vcpu_ctx *vcpu[VCPU_MAX];
     struct ept_ctx *ept;
@@ -195,6 +197,83 @@ static void enter_root_mode(struct vcpu_ctx *vcpu)
     die_on(!__vmptrld(&phys_vmcs), L"Unable to load the VMCS.");
 }
 
+static uint64_t encode_msr(uint64_t ctrl, uint64_t desired)
+{
+    /*
+     * VMX feature/capability MSRs encode the "must be 0" bits in the high word
+     * of their value, and the "must be 1" bits in the low word of their value.
+     * Adjust any requested capability/feature based on these requirements.
+     */
+    desired &= (uint32_t)(ctrl >> 32);
+    desired |= (uint32_t)ctrl;
+    return desired;
+}
+
+static void setup_vmcs_generic(struct vmm_ctx *vmm)
+{
+    /* Set up the link pointer. */
+    __vmwrite(VMCS_GUEST_VMCS_LINK_PTR, ~0ull);
+
+    /* Set up the EPT fields. */
+    __vmwrite(VMCS_CTRL_EPTP, ept_get_pointer(vmm->ept)->flags);
+    __vmwrite(VMCS_CTRL_VPID, 1);
+
+    /* Load the MSR bitmap with the bitmap which will be used to
+     * indicate which MSR reads/writes to trap on.
+     * 0 bits indicate trap, if set then auto route. */
+    cr3 this_cr3;
+    this_cr3.flags = __readcr3();
+    __vmwrite(VMCS_CTRL_MSR_BITMAP, mem_va_to_pa(this_cr3, vmm->msr_trap_bitmap));
+
+    /* We don't explicitly enable any pin-based options ourselves, but there may
+     * be some required by the procesor, the encode the MSR to include these. */
+    uint32_t encoded = encode_msr(rdmsr(IA32_VMX_TRUE_PINBASED_CTLS), 0);
+    __vmwrite(VMCS_CTRL_PIN_EXEC, encoded);
+
+    /*
+     * Enable support for RDTSCP and XSAVES/XRESTORES in the guest. Windows 10
+     * makes use of both of these instructions if the CPU supports it. By using
+     * adjustMSR, these options will be ignored if this processor does
+     * not actually support the instructions to begin with.
+     *
+     * Also enable EPT support, for additional performance and ability to trap
+     * memory access efficiently.
+     */
+    ia32_vmx_procbased_ctls2_register proc_ctls2 = { 0 };
+    proc_ctls2.enable_rdtscp = true;
+    proc_ctls2.enable_invpcid = true;
+    proc_ctls2.enable_xsaves = true;
+    proc_ctls2.unrestricted_guest = true;
+    proc_ctls2.enable_ept = true;
+    proc_ctls2.enable_vpid = true;
+    encoded = encode_msr(rdmsr(IA32_VMX_PROCBASED_CTLS2), proc_ctls2.flags);
+    __vmwrite(VMCS_CTRL_PROC_EXEC2, encoded);
+
+    /* In order for the proc_ctls2 & MSR bitmap to be used we need to explicitly
+     * enable them. */
+    ia32_vmx_procbased_ctls_register proc_ctls = { 0 };
+    proc_ctls.use_msr_bitmaps = true;
+    proc_ctls.activate_secondary_controls = true;
+    encoded = encode_msr(rdmsr(IA32_VMX_TRUE_PROCBASED_CTLS), proc_ctls.flags);
+    __vmwrite(VMCS_CTRL_PROC_EXEC, encoded);
+
+    /* Make sure to exit in x64 mode at all times. */
+    ia32_vmx_exit_ctls_register exit_ctls = { 0 };
+    exit_ctls.save_debug_controls = true;
+    exit_ctls.save_ia32_efer = true;
+    exit_ctls.host_address_space_size = true;
+    encoded = encode_msr(rdmsr(IA32_VMX_TRUE_EXIT_CTLS), exit_ctls.flags);
+    __vmwrite(VMCS_CTRL_EXIT, encoded);
+
+    /* Make sure when we re-enter it's back in x64 mode too. */
+    ia32_vmx_entry_ctls_register entry_ctls = { 0 };
+    entry_ctls.load_debug_controls = true;
+    entry_ctls.load_ia32_efer = true;
+    entry_ctls.ia32e_mode_guest = true;
+    encoded = encode_msr(rdmsr(IA32_VMX_TRUE_ENTRY_CTLS), entry_ctls.flags);
+    __vmwrite(VMCS_CTRL_ENTRY, encoded);
+}
+
 static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
 {
     struct vmm_ctx *vmm = (struct vmm_ctx *)opaque;
@@ -235,6 +314,7 @@ static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
         enter_root_mode(vcpu);
 
         /* Set up VMCS */
+        setup_vmcs_generic(vmm);
 
         /* Attempt VMLAUNCH. */
 

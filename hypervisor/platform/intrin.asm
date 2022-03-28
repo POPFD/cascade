@@ -19,6 +19,7 @@ global __ltr
 global __vmxon
 global __vmclear
 global __vmptrld
+global __vmwrite
 global __capture_context
 global __restore_context
 
@@ -96,6 +97,10 @@ __vmclear:
 
 __vmptrld:
     vmptrld [rcx]
+    ret
+
+__vmwrite:
+    vmwrite rcx, rdx
     ret
 
 __capture_context:

@@ -22,6 +22,7 @@ extern __attribute__((ms_abi)) void __ltr(void *tr);
 extern __attribute__((ms_abi)) int __vmxon(void *vmxon);
 extern __attribute__((ms_abi)) int __vmclear(void *vmcs);
 extern __attribute__((ms_abi)) int __vmptrld(void *vmcs);
+extern __attribute__((ms_abi)) void __vmwrite(size_t field, size_t value);
 extern __attribute__((ms_abi)) void __capture_context(void *context);
 extern __attribute__((ms_abi)) void __restore_context(void *context);
 
