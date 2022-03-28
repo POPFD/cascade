@@ -4,6 +4,7 @@
 #include "memory/vmem.h"
 #include "memory/mem.h"
 #include "vmm.h"
+#include "ept.h"
 #include "vmm_reg.h"
 #include "ia32_compact.h"
 
@@ -24,6 +25,7 @@
 struct vmm_ctx {
     struct vmm_init_params init;
     struct vcpu_ctx *vcpu[VCPU_MAX];
+    struct ept_ctx *ept;
 };
 
 /* Holds the context specific to a singular vCPU. */
@@ -253,6 +255,8 @@ void vmm_init(struct vmm_init_params *params)
      * will not have access to our dynamically allocated memory. */
     static struct vmm_ctx vmm = { 0 };
     memcpy(&vmm.init, params, sizeof(*params));
+
+    vmm.ept = ept_init();
 
     /* Run the initialisation routine on each LP. */
     efi_plat_run_all_processors(init_routine_per_vcpu, &vmm);
