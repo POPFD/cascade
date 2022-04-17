@@ -5,6 +5,7 @@
 #include "memory/mem.h"
 #include "vmm.h"
 #include "ept.h"
+#include "shim.h"
 #include "vmm_reg.h"
 #include "ia32_compact.h"
 
@@ -21,6 +22,12 @@
 /* At max, support up to 100 vCPUs. */
 #define VCPU_MAX 100
 
+/* Mask used to ignore the ring level when specifying a selector. */
+#define IGNORE_RPL_MASK (~3)
+
+/* Defines the size of the host stack. */
+#define HOST_STACK_SIZE 0x6000
+
 /* Holds the global context for the VMM. */
 struct vmm_ctx {
     __attribute__ ((aligned (PAGE_SIZE))) uint8_t msr_trap_bitmap[PAGE_SIZE];
@@ -34,12 +41,21 @@ struct vmm_ctx {
 struct vcpu_ctx {
     __attribute__ ((aligned (PAGE_SIZE))) vmxon host_vmxon;
     __attribute__ ((aligned (PAGE_SIZE))) vmcs guest_vmcs;
+    __attribute__ ((aligned (PAGE_SIZE))) uint8_t host_stack[HOST_STACK_SIZE];
 
     struct control_registers guest_ctrl_regs;
     struct vcpu_context guest_context;
     struct gdt_config gdt_cfg;
 
     bool running_as_guest;
+};
+
+/* Holds information on a GDT entry. */
+struct gdt_entry {
+    size_t base;
+    uint32_t limit;
+    uint16_t sel;
+    vmx_segment_access_rights access;
 };
 
 static void probe_capabilities()
@@ -209,6 +225,96 @@ static uint64_t encode_msr(uint64_t ctrl, uint64_t desired)
     return desired;
 }
 
+static void gather_gdt_entry(segment_descriptor_register_64 *gdtr, uint16_t sel,
+                             struct gdt_entry *entry)
+{
+    /* If the selector is not valid (0) set unusable entry. */
+    if (sel == 0) {
+        entry->sel = 0;
+        entry->limit = 0;
+        entry->base = 0;
+        entry->access.flags = 0;
+        entry->access.unusable = true;
+    }
+
+    /* Calculate the descriptor pointer */
+    segment_descriptor_64 *descriptor =
+        (segment_descriptor_64 *)(gdtr->base_address + (sel & IGNORE_RPL_MASK));
+
+    /* Fill in the entry information. */
+    entry->sel = sel;
+    entry->limit = (descriptor->segment_limit_high << 16) | descriptor->segment_limit_low;
+    entry->base = ((size_t)descriptor->base_address_high << 24) |
+                  ((size_t)descriptor->base_address_middle << 16) |
+                  ((size_t)descriptor->base_address_low);
+
+    if (descriptor->descriptor_type == 0) {
+        entry->base |= (UINTN)descriptor->base_address_upper << 32;
+    }
+
+    /* Access rights are defines as the middle 16 bits of the descriptor flags section. */
+    entry->access.flags = (descriptor->flags >> 8) & 0xFFFF;
+    entry->access.unusable = !descriptor->present;
+    entry->access.reserved_1 = 0;
+}
+
+static void setup_vmcs_host(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
+{
+    /* Configure the host context, as we're hyperjacking we want
+     * to clone the original context as much as possible for ease
+     * of use. */
+    struct vcpu_context *guest_ctx = &vcpu->guest_context;
+
+    /* Write all of the selectors, ignoring the RPL for each field
+     * as the host environment will always be ring-0. */
+    __vmwrite(VMCS_HOST_CS_SEL, guest_ctx->seg_cs & IGNORE_RPL_MASK);
+    __vmwrite(VMCS_HOST_SS_SEL, guest_ctx->seg_ss & IGNORE_RPL_MASK);
+    __vmwrite(VMCS_HOST_DS_SEL, guest_ctx->seg_ds & IGNORE_RPL_MASK);
+    __vmwrite(VMCS_HOST_ES_SEL, guest_ctx->seg_es & IGNORE_RPL_MASK);
+    __vmwrite(VMCS_HOST_FS_SEL, guest_ctx->seg_fs & IGNORE_RPL_MASK);
+    __vmwrite(VMCS_HOST_GS_SEL, guest_ctx->seg_gs & IGNORE_RPL_MASK);
+
+    /* As in a UEFI environment TR is not set, therefore we use our own
+     * generated one when we modified the GDT. */
+    __vmwrite(VMCS_HOST_TR_SEL, vcpu->gdt_cfg.host_tr.flags & IGNORE_RPL_MASK);
+
+    /* Now write all of the BASE registers that are used for the host. */
+    __vmwrite(VMCS_HOST_GDTR_BASE, vcpu->gdt_cfg.host_gdtr.base_address);
+    __vmwrite(VMCS_HOST_GS_BASE, vcpu->guest_ctrl_regs.gs_base);
+    __vmwrite(VMCS_HOST_IDTR_BASE, vmm->init.host_idtr.base_address);
+
+
+    /* Get the GDT information for FS & TR so we can write these for the host VMCS. */
+    struct gdt_entry entry;
+    gather_gdt_entry(&vcpu->gdt_cfg.host_gdtr, guest_ctx->seg_fs, &entry);
+    __vmwrite(VMCS_HOST_FS_BASE, entry.base);
+
+    gather_gdt_entry(&vcpu->gdt_cfg.host_gdtr, vcpu->gdt_cfg.host_tr.flags, &entry);
+    __vmwrite(VMCS_HOST_TR_BASE, entry.base);
+
+    /* SYSENTRY fields. */
+    __vmwrite(VMCS_HOST_SYSENTER_ESP, rdmsr(IA32_SYSENTER_ESP));
+    __vmwrite(VMCS_HOST_SYSENTER_EIP, rdmsr(IA32_SYSENTER_EIP));
+
+    /* Control registers (using our own CR3 value for paging). */
+    __vmwrite(VMCS_HOST_CR0, vcpu->guest_ctrl_regs.reg_cr0.flags);
+    __vmwrite(VMCS_HOST_CR3, vmm->init.host_cr3.flags);
+    __vmwrite(VMCS_HOST_CR4, vcpu->guest_ctrl_regs.reg_cr4.flags);
+
+    /*
+    * Load the hypervisor entrypoint and stack. We give ourselves a standard
+    * size kernel stack (24KB) and bias for the context structure that the
+    * hypervisor entrypoint will push on the stack, avoiding the need for RSP
+    * modifying instructions in the entrypoint. Note that the CONTEXT pointer
+    * and thus the stack itself, must be 16-byte aligned for ABI compatibility
+    * with AMD64 -- specifically, XMM operations will fail otherwise, such as
+    * the ones that __capture_context will perform.
+    */
+    __vmwrite(VMCS_HOST_RSP,
+              (uintptr_t)&vcpu->host_stack[HOST_STACK_SIZE - sizeof(struct vcpu_context)]);
+    __vmwrite(VMCS_HOST_RIP, (uintptr_t)shim_guest_to_host);
+}
+
 static void setup_vmcs_generic(struct vmm_ctx *vmm)
 {
     /* Set up the link pointer. */
@@ -315,6 +421,7 @@ static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
 
         /* Set up VMCS */
         setup_vmcs_generic(vmm);
+        setup_vmcs_host(vmm, vcpu);
 
         /* Attempt VMLAUNCH. */
 
