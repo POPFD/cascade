@@ -4,7 +4,6 @@
 #include "ia32_compact.h"
 
 struct vmm_init_params {
-    uintptr_t image_base;
     __attribute__((aligned(0x10))) cr3 guest_cr3;
     __attribute__((aligned(0x10))) cr3 host_cr3;
     __attribute__((aligned(0x10))) segment_descriptor_register_64 guest_idtr;

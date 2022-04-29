@@ -26,6 +26,7 @@ ASMFLAGS := -f elf64 \
 	-Werror
 
 LDFLAGS := $(EFI_LIB_PATH)crt0-efi-x86_64.o	\
+	-shared									\
 	-nostdlib								\
 	-znocombreloc							\
 	-T elf_x86_64_efi.lds					\

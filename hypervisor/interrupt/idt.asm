@@ -93,14 +93,6 @@ isr_no_err_stub 31
 %assign i i+1
 %endrep
 
-global isr_offset_table
-isr_offset_table:
-%assign i 0 
-%rep    256 
-    dq (isr_stub_%+i - isr_offset_table) ; Using DQ as we are x64
-%assign i i+1 
-%endrep
-
 common_exception_handler:
     pushaq
     mov rdi, rsp
@@ -109,4 +101,12 @@ common_exception_handler:
     add rsp, 10h
     sti
     iretq
-    
+
+section .data
+global interrupt_vector_table
+interrupt_vector_table:
+%assign i 0
+%rep    256
+    dq isr_stub_%+i ; Using DQ as we are x64
+%assign i i+1
+%endrep
