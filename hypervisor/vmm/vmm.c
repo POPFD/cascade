@@ -120,6 +120,7 @@ static void configure_vcpu_gdt(struct gdt_config *gdt_cfg)
 
     /* Read the original GDTR and store it so we can use it for the guest later. */
     __sgdt(&gdt_cfg->guest_gdtr);
+    __sldt(&gdt_cfg->guest_ldtr);
     die_on(!gdt_cfg->guest_gdtr.base_address, L"No base address set for guest GDTR");
     die_on(!gdt_cfg->guest_gdtr.limit, L"No limit set for guest GDTR");
 
@@ -315,6 +316,176 @@ static void setup_vmcs_host(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
     __vmwrite(VMCS_HOST_RIP, (uintptr_t)shim_guest_to_host);
 }
 
+static void setup_vmcs_guest(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
+{
+    /* 
+     * Defines a generic structure so that we can iteratively write all segment
+     * fields needed for the guest.
+     */
+    struct gdt_config {
+        uint16_t sel;
+        uint32_t vmcs_sel;
+        uint32_t vmcs_lim;
+        uint32_t vmcs_ar;
+        uint32_t vmcs_base;
+        segment_descriptor_register_64 *gdtr;
+    };
+
+    struct vcpu_context *guest_ctx = &vcpu->guest_context;
+
+    const struct gdt_config vmcs_gdt_list[] = {
+        {
+            .sel = guest_ctx->seg_cs,
+            .vmcs_sel = VMCS_GUEST_CS_SEL,
+            .vmcs_lim = VMCS_GUEST_CS_LIMIT,
+            .vmcs_ar = VMCS_GUEST_CS_ACCESS_RIGHTS,
+            .vmcs_base = VMCS_GUEST_CS_BASE,
+            .gdtr = &vcpu->gdt_cfg.host_gdtr,
+        },
+        {
+            .sel = guest_ctx->seg_ss,
+            .vmcs_sel = VMCS_GUEST_SS_SEL,
+            .vmcs_lim = VMCS_GUEST_SS_LIMIT,
+            .vmcs_ar = VMCS_GUEST_SS_ACCESS_RIGHTS,
+            .vmcs_base = VMCS_GUEST_SS_BASE,
+            .gdtr = &vcpu->gdt_cfg.host_gdtr,
+        },
+        {
+            .sel = guest_ctx->seg_ds,
+            .vmcs_sel = VMCS_GUEST_DS_SEL,
+            .vmcs_lim = VMCS_GUEST_DS_LIMIT,
+            .vmcs_ar = VMCS_GUEST_DS_ACCESS_RIGHTS,
+            .vmcs_base = VMCS_GUEST_DS_BASE,
+            .gdtr = &vcpu->gdt_cfg.host_gdtr,
+        },
+        {
+            .sel = guest_ctx->seg_es,
+            .vmcs_sel = VMCS_GUEST_ES_SEL,
+            .vmcs_lim = VMCS_GUEST_ES_LIMIT,
+            .vmcs_ar = VMCS_GUEST_ES_ACCESS_RIGHTS,
+            .vmcs_base = VMCS_GUEST_ES_BASE,
+            .gdtr = &vcpu->gdt_cfg.host_gdtr,
+        },
+        {
+            .sel = guest_ctx->seg_fs,
+            .vmcs_sel = VMCS_GUEST_FS_SEL,
+            .vmcs_lim = VMCS_GUEST_FS_LIMIT,
+            .vmcs_ar = VMCS_GUEST_FS_ACCESS_RIGHTS,
+            .vmcs_base = VMCS_GUEST_FS_BASE,
+            .gdtr = &vcpu->gdt_cfg.host_gdtr,
+        },
+        {
+            .sel = guest_ctx->seg_gs,
+            .vmcs_sel = VMCS_GUEST_GS_SEL,
+            .vmcs_lim = VMCS_GUEST_GS_LIMIT,
+            .vmcs_ar = VMCS_GUEST_GS_ACCESS_RIGHTS,
+            .vmcs_base = VMCS_GUEST_GS_BASE,
+            .gdtr = &vcpu->gdt_cfg.host_gdtr,
+        },
+        {
+            .sel = vcpu->gdt_cfg.host_tr.flags,
+            .vmcs_sel = VMCS_GUEST_TR_SEL,
+            .vmcs_lim = VMCS_GUEST_TR_LIMIT,
+            .vmcs_ar = VMCS_GUEST_TR_ACCESS_RIGHTS,
+            .vmcs_base = VMCS_GUEST_TR_BASE,
+            .gdtr = &vcpu->gdt_cfg.host_gdtr,
+        },
+        {
+            .sel = vcpu->gdt_cfg.guest_ldtr.flags,
+            .vmcs_sel = VMCS_GUEST_LDTR_SEL,
+            .vmcs_lim = VMCS_GUEST_LDTR_LIMIT,
+            .vmcs_ar = VMCS_GUEST_LDTR_ACCESS_RIGHTS,
+            .vmcs_base = VMCS_GUEST_LDTR_BASE,
+            .gdtr = &vcpu->gdt_cfg.host_gdtr,
+        }
+    };
+
+    /*
+     * For TR and LDTR we cannot use what the guest has, as to be able to
+     * successfully VMENTER we need a TR and LDTR set (unfortunately)
+     */
+
+    /* For each selector, generate it's entry and then fill in relevant fields. */
+    for (size_t i = 0; i < ARRAY_SIZE(vmcs_gdt_list); i++) {
+        const struct gdt_config *curr_cfg = &vmcs_gdt_list[i];
+        struct gdt_entry entry;
+
+        gather_gdt_entry(curr_cfg->gdtr, curr_cfg->sel, &entry);
+
+        if (curr_cfg->vmcs_sel)
+            __vmwrite(curr_cfg->vmcs_sel, entry.sel);
+        if (curr_cfg->vmcs_lim)
+            __vmwrite(curr_cfg->vmcs_lim, entry.limit);
+        if (curr_cfg->vmcs_ar)
+            __vmwrite(curr_cfg->vmcs_ar, entry.access.flags);
+        if (curr_cfg->vmcs_base)
+            __vmwrite(curr_cfg->vmcs_base, entry.base);
+
+        VMM_PRINT(L"VMX GDT Entry: %d\n"
+                  L"--- VMCS SEL [0x%lX]: 0x%lX\n"
+                  L"--- VMCS LIM [0x%lX]: 0x%lX\n"
+                  L"--- VMCS AR [0x%lX]: 0x%lX\n"
+                  L"--- VMCS BASE [0x%lX]: 0x%lX\n\n",
+                  i, 
+                  curr_cfg->vmcs_sel, entry.sel,
+                  curr_cfg->vmcs_lim, entry.limit,
+                  curr_cfg->vmcs_ar, entry.access.flags,
+                  curr_cfg->vmcs_base, entry.base);
+    }
+
+    /* Now write the GDTR for the guest (due to TR & LDTR restrictions re-use guest). */
+    __vmwrite(VMCS_GUEST_GDTR_BASE, vcpu->gdt_cfg.host_gdtr.base_address);
+    __vmwrite(VMCS_GUEST_GDTR_LIMIT, vcpu->gdt_cfg.host_gdtr.limit);
+
+    /* Now write IDTR, we can ACTUALLY use the guest IDT thank god... */
+    __vmwrite(VMCS_GUEST_IDTR_BASE, vmm->init.guest_idtr.base_address);
+    __vmwrite(VMCS_GUEST_IDTR_LIMIT, vmm->init.guest_idtr.limit);
+
+    /* Control registers. */
+    __vmwrite(VMCS_CTRL_CR0_READ_SHADOW, vcpu->guest_ctrl_regs.reg_cr0.flags);
+    __vmwrite(VMCS_GUEST_CR0, vcpu->guest_ctrl_regs.reg_cr0.flags);
+
+    /*
+     * We have to use the page table created in our host environment for now
+     * the guest will overwrite this when actually loading an OS though so we're golden.
+     */
+    __vmwrite(VMCS_CTRL_CR3_TARGET_COUNT, 0);
+    __vmwrite(VMCS_GUEST_CR3, vcpu->guest_ctrl_regs.reg_cr3.flags);
+
+    /* Set the guest/host mask and a shadow, this is used to hide
+     * the fact that VMXE bit in CR4 is set.
+     *
+     * Setting a bit to 1 ensures that the bit is host owned,
+     * meaning that the value will be read from the shadow register.
+     *
+     * Setting a bit to 0 ensures that the bit is guest owned,
+     * meaning that the actual value will be read.
+     */
+    static const UINT64 POSITION_VMXE_BIT = (1 << 13);
+
+    __vmwrite(VMCS_CTRL_CR4_MASK, POSITION_VMXE_BIT);
+    //__vmwrite(VMCS_CTRL_CR4_READ_SHADOW, vcpu->guest_ctrl_regs.reg_cr4.flags & ~POSITION_VMXE_BIT);
+    __vmwrite(VMCS_CTRL_CR4_READ_SHADOW, vcpu->guest_ctrl_regs.reg_cr4.flags);
+    __vmwrite(VMCS_GUEST_CR4, vcpu->guest_ctrl_regs.reg_cr4.flags);
+
+    /* Debug kernel registers. */
+    __vmwrite(VMCS_GUEST_DEBUGCTL, vcpu->guest_ctrl_regs.debugctl.flags);
+    __vmwrite(VMCS_GUEST_DR7, vcpu->guest_ctrl_regs.dr7);
+
+    /* Extended feature enable registers. */
+    __vmwrite(VMCS_GUEST_EFER, rdmsr(IA32_EFER));
+
+    /*
+    * Finally, load the guest stack, instruction pointer, and rflags, which
+    * corresponds exactly to the location where __capture_context will return
+    * to inside of init_routine_per_vcpu.
+    */
+    __vmwrite(VMCS_GUEST_RSP,
+              (uintptr_t)&vcpu->host_stack[HOST_STACK_SIZE - sizeof(struct vcpu_context)]);
+    __vmwrite(VMCS_GUEST_RIP, (uintptr_t)shim_host_to_guest);
+    __vmwrite(VMCS_GUEST_RFLAGS, guest_ctx->e_flags);
+}
+
 static void setup_vmcs_generic(struct vmm_ctx *vmm)
 {
     /* Set up the link pointer. */
@@ -422,6 +593,7 @@ static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
         /* Set up VMCS */
         setup_vmcs_generic(vmm);
         setup_vmcs_host(vmm, vcpu);
+        setup_vmcs_guest(vmm, vcpu);
 
         /* Attempt VMLAUNCH. */
 
