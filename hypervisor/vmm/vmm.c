@@ -311,10 +311,17 @@ static void setup_vmcs_host(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
     * and thus the stack itself, must be 16-byte aligned for ABI compatibility
     * with AMD64 -- specifically, XMM operations will fail otherwise, such as
     * the ones that __capture_context will perform.
+    *
+    * Due to shitty compiler settings/flags or linker (which I need to fix) the shim_guest_to_host
+    * uinptr gets treated as an offset rather than actually being treated as a proper pointer.
+    * Therefore we have to add the imagebase to fix this....
     */
+    uintptr_t ptr_guest_to_host = vmm->init.image_base + (uintptr_t)shim_guest_to_host;
+
     __vmwrite(VMCS_HOST_RSP,
               (uintptr_t)&vcpu->host_stack[HOST_STACK_SIZE - sizeof(struct vcpu_context)]);
-    __vmwrite(VMCS_HOST_RIP, (uintptr_t)shim_guest_to_host);
+    __vmwrite(VMCS_HOST_RIP, ptr_guest_to_host);
+    VMM_PRINT(L"VMCS_HOST_RIP: 0x%lX\n", ptr_guest_to_host);
 }
 
 static void setup_vmcs_guest(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
@@ -480,11 +487,18 @@ static void setup_vmcs_guest(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
     * Finally, load the guest stack, instruction pointer, and rflags, which
     * corresponds exactly to the location where __capture_context will return
     * to inside of init_routine_per_vcpu.
+    *
+    * Due to shitty compiler settings/flags or linker (which I need to fix) the shim_host_to_guest
+    * uinptr gets treated as an offset rather than actually being treated as a proper pointer.
+    * Therefore we have to add the imagebase to fix this....
     */
+    uintptr_t ptr_host_to_guest = vmm->init.image_base + (uintptr_t)shim_host_to_guest;
+
+    __vmwrite(VMCS_GUEST_RFLAGS, guest_ctx->e_flags);
     __vmwrite(VMCS_GUEST_RSP,
               (uintptr_t)&vcpu->host_stack[HOST_STACK_SIZE - sizeof(struct vcpu_context)]);
-    __vmwrite(VMCS_GUEST_RIP, (uintptr_t)shim_host_to_guest);
-    __vmwrite(VMCS_GUEST_RFLAGS, guest_ctx->e_flags);
+    __vmwrite(VMCS_GUEST_RIP, ptr_host_to_guest);
+    VMM_PRINT(L"VMCS_GUEST_RIP: 0x%lX\n", ptr_host_to_guest);
 }
 
 static void setup_vmcs_generic(struct vmm_ctx *vmm)

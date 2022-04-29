@@ -32,6 +32,7 @@ efi_main (EFI_HANDLE image_handle, EFI_SYSTEM_TABLE *system_table)
   /* Initialise all of the required modules and set up the parameters
    * required for the VMM to start. */
   struct vmm_init_params vmm_params = {};
+  vmm_params.image_base = (uintptr_t)loaded_image->ImageBase;
 
   efi_plat_init(system_table);
   pmem_init();

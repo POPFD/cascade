@@ -18,4 +18,8 @@ shim_guest_to_host:
     jmp handler_guest_to_host
 
 shim_host_to_guest:
+    ; This is just for debugging atm.
+    int 3
+h2g_loop:
+    jmp h2g_loop
     ret
