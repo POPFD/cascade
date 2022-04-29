@@ -20,6 +20,8 @@ global __vmxon
 global __vmclear
 global __vmptrld
 global __vmwrite
+global __vmread
+global __vmlaunch
 global __capture_context
 global __restore_context
 
@@ -101,6 +103,14 @@ __vmptrld:
 
 __vmwrite:
     vmwrite rcx, rdx
+    ret
+
+__vmread:
+    vmread rcx, rdx
+    ret
+
+__vmlaunch:
+    vmlaunch
     ret
 
 __capture_context:

@@ -597,10 +597,16 @@ static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
         setup_vmcs_guest(vmm, vcpu);
 
         /* Attempt VMLAUNCH. */
+        VMM_PRINT(L"Attempting VMLAUNCH on vCPU %d\n", proc_idx);
+        __vmlaunch();
 
-        /* If we have got to this point,
-         * VMLAUNCH failed, therefore we get failure
-         * reason and dump. */
+        /* 
+         * If we have got to this point, VMLAUNCH failed.
+         * Get failure reason and dump info for debugging. */
+        size_t fail_reason = 0;
+        __vmread(VMCS_VM_INSTR_ERROR, &fail_reason);
+        debug_print(L"Failed to launch VMX with reason: 0x%lX\n", fail_reason);
+        while (1) {};
     }
 }
 
