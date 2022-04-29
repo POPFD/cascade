@@ -236,6 +236,7 @@ static void gather_gdt_entry(segment_descriptor_register_64 *gdtr, uint16_t sel,
         entry->base = 0;
         entry->access.flags = 0;
         entry->access.unusable = true;
+        return;
     }
 
     /* Calculate the descriptor pointer */
