@@ -39,7 +39,7 @@ struct exception_stack {
 	rfl r_flags;
 };
 
-#define DEBUG_IDT
+//#define DEBUG_IDT
 #ifdef DEBUG_IDT
     #define IDT_PRINT(...) debug_print(__VA_ARGS__)
 #else
@@ -79,6 +79,10 @@ void idt_exception_handler(const struct exception_stack *stack)
     /* For now, just hang the computer until we have something better to do. */
     IDT_PRINT(L"rip %lX vec 0x%X[%d] err %d\n",
               stack->rip, stack->interrupt_number, stack->interrupt_number, stack->error_code);
+
+    /* DEBUG: If one of the defined interrupts stop and wait for processing. */
+    die_on(stack->interrupt_number < 0x14, L"Unhandled interrupt rip %lX vec 0x%X[%d] err %d\n",
+           stack->rip, stack->interrupt_number, stack->interrupt_number, stack->error_code);
 }
 
 void idt_init(segment_descriptor_register_64 *orig_idtr, segment_descriptor_register_64 *new_idtr)
