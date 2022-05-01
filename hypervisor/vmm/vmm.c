@@ -39,9 +39,9 @@ struct vmm_ctx {
 
 /* Holds the context specific to a singular vCPU. */
 struct vcpu_ctx {
+    __attribute__ ((aligned (PAGE_SIZE))) uint8_t host_stack[HOST_STACK_SIZE];
     __attribute__ ((aligned (PAGE_SIZE))) vmxon host_vmxon;
     __attribute__ ((aligned (PAGE_SIZE))) vmcs guest_vmcs;
-    __attribute__ ((aligned (PAGE_SIZE))) uint8_t host_stack[HOST_STACK_SIZE];
 
     struct control_registers guest_ctrl_regs;
     struct vcpu_context guest_context;
@@ -57,6 +57,13 @@ struct gdt_entry {
     uint16_t sel;
     vmx_segment_access_rights access;
 };
+
+/* Global const offset used for calculating where the stack pointer
+ * will be offsetted from the vcpu_ctx upon a guest_to_host or vice versa
+ * transition. We have to use this as our shim assembly code uses it for
+ * reclaiming the vcpu_ctx pointer upon hyperjacking. */
+const size_t VMM_HYPERJACK_STACK_OFFSET = offsetof(struct vcpu_ctx, host_stack) +
+                                        HOST_STACK_SIZE - sizeof(struct vcpu_context);
 
 static void probe_capabilities()
 {
@@ -312,10 +319,12 @@ static void setup_vmcs_host(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
     * with AMD64 -- specifically, XMM operations will fail otherwise, such as
     * the ones that __capture_context will perform.
     */
-    __vmwrite(VMCS_HOST_RSP,
-              (uintptr_t)&vcpu->host_stack[HOST_STACK_SIZE - sizeof(struct vcpu_context)]);
-    __vmwrite(VMCS_HOST_RIP, (uintptr_t)shim_guest_to_host);
-    VMM_PRINT(L"VMCS_HOST_RIP: 0x%lX\n", (uintptr_t)shim_guest_to_host);
+    uintptr_t host_rip = (uintptr_t)shim_guest_to_host;
+    uintptr_t host_rsp = (uintptr_t)vcpu + VMM_HYPERJACK_STACK_OFFSET;
+
+    __vmwrite(VMCS_HOST_RSP, host_rsp);
+    __vmwrite(VMCS_HOST_RIP, host_rip);
+    VMM_PRINT(L"VMCS_HOST_RIP: 0x%lX VMCS_HOST_RSP\n", host_rip, host_rsp);
 }
 
 static void setup_vmcs_guest(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
@@ -481,12 +490,27 @@ static void setup_vmcs_guest(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
     * Finally, load the guest stack, instruction pointer, and rflags, which
     * corresponds exactly to the location where __capture_context will return
     * to inside of init_routine_per_vcpu.
+    *
+    * Use a dirty hack where we set the RSP to the kernel stack and the address
+    * then set the first parameter on the stack to point to the vCPU context
+    * so our host_to_guest shim can retrieve this. This MUST be accessible
+    * within the guest CR3 (we can't use our vmem from host).
+    * so we use the physical address as we should beidentity mapped.
     */
+    cr3 this_cr3;
+    this_cr3.flags = __readcr3();
+    uintptr_t phys_vcpu_ctx = (uintptr_t)mem_va_to_pa(this_cr3, vcpu);
+
+    uintptr_t guest_rip = (uintptr_t)shim_host_to_guest;
+    uintptr_t guest_rsp = (uintptr_t)phys_vcpu_ctx + VMM_HYPERJACK_STACK_OFFSET;
+
+    *(uintptr_t*)(guest_rsp) = (uintptr_t)phys_vcpu_ctx;
+
     __vmwrite(VMCS_GUEST_RFLAGS, guest_ctx->e_flags);
-    __vmwrite(VMCS_GUEST_RSP,
-              (uintptr_t)&vcpu->host_stack[HOST_STACK_SIZE - sizeof(struct vcpu_context)]);
-    __vmwrite(VMCS_GUEST_RIP, (uintptr_t)shim_host_to_guest);
-    VMM_PRINT(L"VMCS_GUEST_RIP: 0x%lX\n", (uintptr_t)shim_host_to_guest);
+    __vmwrite(VMCS_GUEST_RSP, guest_rsp);
+    __vmwrite(VMCS_GUEST_RIP, guest_rip);
+    VMM_PRINT(L"VMCS_GUEST_RIP: 0x%lX VMCS_GUEST_RSP: 0x%lX PHYS_VCPU: 0x%lX\n",
+              guest_rip, guest_rsp, phys_vcpu_ctx);
 }
 
 static void setup_vmcs_generic(struct vmm_ctx *vmm)
@@ -599,7 +623,7 @@ static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
         setup_vmcs_guest(vmm, vcpu);
 
         /* Attempt VMLAUNCH. */
-        VMM_PRINT(L"Attempting VMLAUNCH on vCPU %d\n", proc_idx);
+        VMM_PRINT(L"Attempting VMLAUNCH on vCPU %d with ctx: 0x%lX\n", proc_idx, vcpu);
         __vmlaunch();
 
         /* 
@@ -628,4 +652,22 @@ void vmm_init(struct vmm_init_params *params)
 
     /* Run the initialisation routine on each LP. */
     efi_plat_run_all_processors(init_routine_per_vcpu, &vmm);
+}
+
+__attribute__((noreturn)) void vmm_hyperjack_handler(struct vcpu_ctx *vcpu)
+{
+    /*
+     * We are currently executing in the guest, after a successful
+     * initial VMLAUNCH, so now we need to return to our hyperjacking
+     * code path where the initial init_routine_per_vcpu::__capture_context
+     * took place.
+     *
+     * This time with the running_as_guest flag set, therefore the driver
+     * should then exit successfully.
+     */
+    VMM_PRINT(L"Retrieved vCPU context: 0x%lX\n", (uintptr_t)vcpu);
+
+    vcpu->running_as_guest = true;
+    __restore_context(&vcpu->guest_context);
+    die_on(true, L"Shouldn't be here context should have been restored.");
 }
