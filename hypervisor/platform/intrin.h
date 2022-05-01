@@ -23,8 +23,9 @@ extern __attribute__((ms_abi)) int __vmxon(void *vmxon);
 extern __attribute__((ms_abi)) int __vmclear(void *vmcs);
 extern __attribute__((ms_abi)) int __vmptrld(void *vmcs);
 extern __attribute__((ms_abi)) void __vmwrite(size_t field, size_t value);
-extern __attribute__((ms_abi)) void __vmread(size_t field, size_t *val_ptr);
+extern __attribute__((ms_abi)) size_t __vmread(size_t field);
 extern __attribute__((ms_abi)) int __vmlaunch(void);
+extern __attribute__((ms_abi, noreturn)) void __vmresume(void);
 extern __attribute__((ms_abi)) void __capture_context(void *context);
 extern __attribute__((ms_abi)) void __restore_context(void *context);
 

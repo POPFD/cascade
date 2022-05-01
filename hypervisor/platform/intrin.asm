@@ -22,6 +22,7 @@ global __vmptrld
 global __vmwrite
 global __vmread
 global __vmlaunch
+global __vmresume
 global __capture_context
 global __restore_context
 
@@ -106,12 +107,16 @@ __vmwrite:
     ret
 
 __vmread:
-    vmread rcx, rdx
+    vmread rax, rcx
     ret
 
 __vmlaunch:
     vmlaunch
     ret
+
+__vmresume:
+    vmresume
+    ; No need to RET as context RIP/RSP will change to VMCS_GUEST_R*P
 
 __capture_context:
     pushfq

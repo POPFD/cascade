@@ -6,7 +6,6 @@
 #include "vmm.h"
 #include "ept.h"
 #include "shim.h"
-#include "vmm_reg.h"
 #include "ia32_compact.h"
 
 /* The main VMM that will initialise the hypervisor,
@@ -19,36 +18,8 @@
     #define VMM_PRINT(...)
 #endif
 
-/* At max, support up to 100 vCPUs. */
-#define VCPU_MAX 100
-
 /* Mask used to ignore the ring level when specifying a selector. */
 #define IGNORE_RPL_MASK (~3)
-
-/* Defines the size of the host stack. */
-#define HOST_STACK_SIZE 0x6000
-
-/* Holds the global context for the VMM. */
-struct vmm_ctx {
-    __attribute__ ((aligned (PAGE_SIZE))) uint8_t msr_trap_bitmap[PAGE_SIZE];
-
-    struct vmm_init_params init;
-    struct vcpu_ctx *vcpu[VCPU_MAX];
-    struct ept_ctx *ept;
-};
-
-/* Holds the context specific to a singular vCPU. */
-struct vcpu_ctx {
-    __attribute__ ((aligned (PAGE_SIZE))) uint8_t host_stack[HOST_STACK_SIZE];
-    __attribute__ ((aligned (PAGE_SIZE))) vmxon host_vmxon;
-    __attribute__ ((aligned (PAGE_SIZE))) vmcs guest_vmcs;
-
-    struct control_registers guest_ctrl_regs;
-    struct vcpu_context guest_context;
-    struct gdt_config gdt_cfg;
-
-    bool running_as_guest;
-};
 
 /* Holds information on a GDT entry. */
 struct gdt_entry {
@@ -96,25 +67,30 @@ static void probe_capabilities()
 
 static void print_gdt(CHAR16 *prefix, segment_descriptor_register_64 *gdtr)
 {
-    VMM_PRINT(L"--- %s GDT base %lX limit %lX\n", prefix, gdtr->base_address, gdtr->limit);
+    (void)prefix;
+    (void)gdtr;
 
-    segment_descriptor_32 *gdt = (segment_descriptor_32 *)gdtr->base_address;
-    int desc_max = (gdtr->limit + 1ull) / sizeof(segment_descriptor_32);
-    for (int i = 0; i < desc_max; i++) {
-        segment_descriptor_32 *curr_desc = (segment_descriptor_32 *)&gdt[i];
+    #ifdef DEBUG_VMM
+        VMM_PRINT(L"--- %s GDT base %lX limit %lX\n", prefix, gdtr->base_address, gdtr->limit);
 
-        VMM_PRINT(L"------ Descriptor %lX\n", (uintptr_t)curr_desc);
-        VMM_PRINT(L"------ Flags %X\n", curr_desc->flags);
-        VMM_PRINT(L"------ Present %X\n", curr_desc->present);
-        VMM_PRINT(L"------ Type %X\n", curr_desc->type);
-        VMM_PRINT(L"------ Segment limit %X\n",
-                  (curr_desc->segment_limit_high << 16) | curr_desc->segment_limit_low);
+        segment_descriptor_32 *gdt = (segment_descriptor_32 *)gdtr->base_address;
+        int desc_max = (gdtr->limit + 1ull) / sizeof(segment_descriptor_32);
+        for (int i = 0; i < desc_max; i++) {
+            segment_descriptor_32 *curr_desc = (segment_descriptor_32 *)&gdt[i];
 
-        uintptr_t base_addr = (curr_desc->base_address_high << 24) |
-                              (curr_desc->base_address_middle << 16) |
-                              (curr_desc->base_address_low & UINT16_MAX);
-        VMM_PRINT(L"------ Base address %lX\n\n", base_addr);
-    }
+            VMM_PRINT(L"------ Descriptor %lX\n", (uintptr_t)curr_desc);
+            VMM_PRINT(L"------ Flags %X\n", curr_desc->flags);
+            VMM_PRINT(L"------ Present %X\n", curr_desc->present);
+            VMM_PRINT(L"------ Type %X\n", curr_desc->type);
+            VMM_PRINT(L"------ Segment limit %X\n",
+                    (curr_desc->segment_limit_high << 16) | curr_desc->segment_limit_low);
+
+            uintptr_t base_addr = (curr_desc->base_address_high << 24) |
+                                (curr_desc->base_address_middle << 16) |
+                                (curr_desc->base_address_low & UINT16_MAX);
+            VMM_PRINT(L"------ Base address %lX\n\n", base_addr);
+        }
+    #endif /* DEBUG_VMM */
 }
 
 static void configure_vcpu_gdt(struct gdt_config *gdt_cfg)
@@ -629,8 +605,7 @@ static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
         /* 
          * If we have got to this point, VMLAUNCH failed.
          * Get failure reason and dump info for debugging. */
-        size_t fail_reason = 0;
-        __vmread(VMCS_VM_INSTR_ERROR, &fail_reason);
+        size_t fail_reason = __vmread(VMCS_VM_INSTR_ERROR);
         debug_print(L"Failed to launch VMX with reason: 0x%lX\n", fail_reason);
         while (1) {};
     }

@@ -35,7 +35,13 @@ efi_main (EFI_HANDLE image_handle, EFI_SYSTEM_TABLE *system_table)
   idt_init(&vmm_params.guest_idtr, &vmm_params.host_idtr);
   vmm_init(&vmm_params);
 
+  /* DEBUG: Try trigger a VMEXIT just to test. */
+  cpuid_eax_01 version_info;
+  CPUID_LEAF_READ(CPUID_VERSION_INFO, version_info);
+
   debug_print(L"Exiting.\n");
+
+  while (1) {}
 
   return EFI_SUCCESS;
 }
