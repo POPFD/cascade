@@ -27,12 +27,36 @@ static bool handle_cpuid(struct vcpu_ctx *vcpu, bool *move_to_next)
     return true;
 }
 
+static bool handle_xsetbv(struct vcpu_ctx *vcpu, bool *move_to_next)
+{
+    /* TODO: XSETBV shall trigger a #GP if called with an unimplemented
+     *       XCR, or wrong privilege level in guest we should actually handle
+     *       this properly rather than trying to call it blindly. */
+
+    /*
+     * Running XSETBV requires os_xsave to be set in CR4
+     * this is not the cast in an EFI booted environment
+     * so we enable it before the call.
+     */
+    cr4 host_cr4;
+    host_cr4.flags = __readcr4();
+    host_cr4.os_xsave = true;
+    __writecr4(host_cr4.flags);
+
+    __xsetbv((uint32_t)vcpu->guest_context.rcx,
+             (vcpu->guest_context.rdx << 32) | vcpu->guest_context.rax);
+    
+    *move_to_next = true;
+    return true;
+}
+
 static void handle_exit_reason(struct vcpu_ctx *vcpu)
 {
     typedef bool (*fn_exit_handler)(struct vcpu_ctx *vcpu, bool *move_next_instr);
 
     static const fn_exit_handler EXIT_HANDLERS[] = {
-        [VMX_EXIT_REASON_CPUID] = handle_cpuid
+        [VMX_EXIT_REASON_CPUID] = handle_cpuid,
+        [VMX_EXIT_REASON_XSETBV] = handle_xsetbv
     };
 
     /* Determine the exit reason and then call the appropriate exit handler. */

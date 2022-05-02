@@ -90,6 +90,14 @@ __ltr:
     ltr word [rcx]
     ret
 
+__xsetbv:
+    ; assume RCX already contains operand1
+    ; move operand2 from RDX into EDX:EAX
+    mov eax, edx
+    shr rdx, 32
+    xsetbv
+    ret
+
 __vmxon:
     vmxon [rcx]
     ret
