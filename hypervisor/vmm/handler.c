@@ -182,6 +182,10 @@ static void handle_exit_reason(struct vcpu_ctx *vcpu)
            L"Exit reason 0x%lX rip 0x%lX not within range of handler table\n",
            reason, vcpu->guest_context.rip);
 
+    die_on(!EXIT_HANDLERS[reason],
+           L"Exit reason 0x%lX rip 0x%lX not declared in handler table\n",
+           reason, vcpu->guest_context.rip);
+
     HANDLER_PRINT(L"VMEXIT reason: 0x%lX rip: 0x%lX\n", reason, vcpu->guest_context.rip);
     bool move_to_next_instr = false;
     bool success = EXIT_HANDLERS[reason](vcpu, &move_to_next_instr);
