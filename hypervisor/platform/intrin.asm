@@ -98,6 +98,10 @@ __xsetbv:
     xsetbv
     ret
 
+__invd:
+    invd
+    ret
+
 __vmxon:
     vmxon [rcx]
     ret

@@ -50,13 +50,23 @@ static bool handle_xsetbv(struct vcpu_ctx *vcpu, bool *move_to_next)
     return true;
 }
 
+static bool handle_invd(struct vcpu_ctx *vcpu, bool *move_to_next)
+{
+    (void)vcpu;
+    
+    __invd();
+    *move_to_next = true;
+    return true;
+}
+
 static void handle_exit_reason(struct vcpu_ctx *vcpu)
 {
     typedef bool (*fn_exit_handler)(struct vcpu_ctx *vcpu, bool *move_next_instr);
 
     static const fn_exit_handler EXIT_HANDLERS[] = {
         [VMX_EXIT_REASON_CPUID] = handle_cpuid,
-        [VMX_EXIT_REASON_XSETBV] = handle_xsetbv
+        [VMX_EXIT_REASON_XSETBV] = handle_xsetbv,
+        [VMX_EXIT_REASON_INVD] = handle_invd,
     };
 
     /* Determine the exit reason and then call the appropriate exit handler. */
