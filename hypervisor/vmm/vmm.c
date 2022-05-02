@@ -558,12 +558,11 @@ static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
 {
     struct vmm_ctx *vmm = (struct vmm_ctx *)opaque;
 
-    /* Ensure that the correct host IDT and CR3 are loaded for this vCPU.
+    /* Ensure that the correct host CR3 is loaded for this vCPU.
      * This SHOULD be the case for vCPU 0 as they were originally set during
      * the initialisation of the modules, however for other vCPU's they
      * will be set to what they were before the hyperjack. */
     __writecr3(vmm->init.host_cr3.flags);
-    __lidt(&vmm->init.host_idtr);
 
     size_t proc_idx;
     efi_plat_processor_index(&proc_idx);

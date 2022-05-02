@@ -39,7 +39,7 @@ struct exception_stack {
 	rfl r_flags;
 };
 
-//#define DEBUG_IDT
+#define DEBUG_IDT
 #ifdef DEBUG_IDT
     #define IDT_PRINT(...) debug_print(__VA_ARGS__)
 #else
@@ -100,7 +100,6 @@ void idt_init(segment_descriptor_register_64 *orig_idtr, segment_descriptor_regi
     for (int i = 0; i < IDT_ENTRY_COUNT; i++)
         set_entry(i, interrupt_vector_table[i], SEGMENT_DESCRIPTOR_TYPE_INTERRUPT_GATE);
 
-    __lidt(new_idtr);
     IDT_PRINT(L"New IDTR base_addr %lX limit %X\n",
               new_idtr->base_address, new_idtr->limit);
 }

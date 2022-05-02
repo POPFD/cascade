@@ -41,7 +41,5 @@ efi_main (EFI_HANDLE image_handle, EFI_SYSTEM_TABLE *system_table)
 
   debug_print(L"Exiting.\n");
 
-  while (1) {}
-
   return EFI_SUCCESS;
 }
