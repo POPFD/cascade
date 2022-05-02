@@ -10,12 +10,29 @@
     #define HANDLER_PRINT(...)
 #endif
 
+static bool handle_cpuid(struct vcpu_ctx *vcpu, bool *move_to_next)
+{
+    /* Read the CPUID into the leafs array. */
+    uint32_t leafs[4];
+    __get_cpuid(vcpu->guest_context.rax, &leafs[0], &leafs[1], &leafs[2], &leafs[3]);
+
+    /* TODO: Extra handling here? Maybe we want to hide HV, or add HV vendor leafs */
+
+    /* Store these leafs back into the guest context and move to next. */
+    vcpu->guest_context.rax = leafs[0];
+    vcpu->guest_context.rbx = leafs[1];
+    vcpu->guest_context.rcx = leafs[2];
+    vcpu->guest_context.rdx = leafs[3];
+    *move_to_next = true;
+    return true;
+}
+
 static void handle_exit_reason(struct vcpu_ctx *vcpu)
 {
     typedef bool (*fn_exit_handler)(struct vcpu_ctx *vcpu, bool *move_next_instr);
 
-    static const fn_exit_handler EXIT_HANDLERS[1] = {
-        NULL
+    static const fn_exit_handler EXIT_HANDLERS[] = {
+        [VMX_EXIT_REASON_CPUID] = handle_cpuid
     };
 
     /* Determine the exit reason and then call the appropriate exit handler. */
