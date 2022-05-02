@@ -10,6 +10,53 @@
     #define HANDLER_PRINT(...)
 #endif
 
+static bool event_has_error_code(exception_vector vector)
+{
+    switch (vector) {
+        case double_fault:
+        case invalid_tss:
+        case segment_not_present:
+        case stack_segment_fault:
+        case general_protection:
+        case page_fault:
+        case alignment_check:
+            return true;
+        default:
+            return false;
+    }
+}
+
+static void inject_guest_event(exception_vector vector, exception_error_code code)
+{
+    vmentry_interrupt_info info = { 0 };
+    interruption_type type;
+
+    /* Determine if the vector has an error code associated with it. */
+    info.deliver_error_code = event_has_error_code(vector);
+
+    /* Determine the interrupt type. */
+    switch (vector) {
+        case breakpoint:
+        case overflow:
+            type = software_exception;
+            break;
+        case debug:
+            type = privileged_software_exception;
+            break;
+        default:
+            type = hardware_exception;
+            break;
+    }
+
+    info.vector = vector;
+    info.interruption_type = type;
+    info.valid = true;
+    __vmwrite(VMCS_CTRL_ENTRY_INTERRUPTION_INFO, info.flags);
+
+    if (info.deliver_error_code)
+        __vmwrite(VMCS_CTRL_ENTRY_EXCEPTION_ERRCODE, code.flags);
+}
+
 static bool handle_cpuid(struct vcpu_ctx *vcpu, bool *move_to_next)
 {
     /* Read the CPUID into the leafs array. */
@@ -59,6 +106,63 @@ static bool handle_invd(struct vcpu_ctx *vcpu, bool *move_to_next)
     return true;
 }
 
+static bool handle_rdmsr(struct vcpu_ctx *vcpu, bool *move_to_next)
+{
+    static const exception_error_code DEFAULT_EC = { 0 };
+    size_t msr = (uint32_t)vcpu->guest_context.rcx;
+
+    /* Check to see if valid RPL to perform the read. */
+    segment_selector cs;
+    cs.flags = __vmread(VMCS_GUEST_CS_SEL);
+    if (cs.request_privilege_level != 0) {
+        inject_guest_event(general_protection, DEFAULT_EC);
+        *move_to_next = false;
+        return true;
+    }
+
+    /* Check to see if within valid MSR range. */
+    if ((msr && (msr <= 0x1FFF)) || ((msr >= 0xC0000000) && (msr <= 0xC0001FFF))) {
+        size_t msr_val = rdmsr(msr);
+        vcpu->guest_context.rdx = msr_val >> 32;
+        vcpu->guest_context.rax = (uint32_t)msr_val;
+        *move_to_next = true;
+        return true;
+    }
+
+    /* Invalid MSR which is out of range. */
+    inject_guest_event(general_protection, DEFAULT_EC);
+    *move_to_next = false;
+    return true;
+}
+
+static bool handle_wrmsr(struct vcpu_ctx *vcpu, bool *move_to_next)
+{
+    static const exception_error_code DEFAULT_EC = { 0 };
+    size_t msr_id = (uint32_t)vcpu->guest_context.rcx;
+    size_t msr_val = (vcpu->guest_context.rdx << 32) | (uint32_t)vcpu->guest_context.rax;
+
+    /* Check to see if valid RPL to perform the read. */
+    segment_selector cs;
+    cs.flags = __vmread(VMCS_GUEST_CS_SEL);
+    if (cs.request_privilege_level != 0) {
+        inject_guest_event(general_protection, DEFAULT_EC);
+        *move_to_next = false;
+        return true;
+    }
+
+    /* Check to see if within valid MSR range. */
+    if ((msr_id && (msr_id <= 0x1FFF)) || ((msr_id >= 0xC0000000) && (msr_id <= 0xC0001FFF))) {
+        wrmsr(msr_id, msr_val);
+        *move_to_next = true;
+        return true;
+    }
+
+    /* Invalid MSR which is out of range. */
+    inject_guest_event(general_protection, DEFAULT_EC);
+    *move_to_next = false;
+    return true;
+}
+
 static void handle_exit_reason(struct vcpu_ctx *vcpu)
 {
     typedef bool (*fn_exit_handler)(struct vcpu_ctx *vcpu, bool *move_next_instr);
@@ -67,6 +171,8 @@ static void handle_exit_reason(struct vcpu_ctx *vcpu)
         [VMX_EXIT_REASON_CPUID] = handle_cpuid,
         [VMX_EXIT_REASON_XSETBV] = handle_xsetbv,
         [VMX_EXIT_REASON_INVD] = handle_invd,
+        [VMX_EXIT_REASON_RDMSR] = handle_rdmsr,
+        [VMX_EXIT_REASON_WRMSR] = handle_wrmsr
     };
 
     /* Determine the exit reason and then call the appropriate exit handler. */
