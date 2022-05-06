@@ -265,9 +265,14 @@ static void setup_vmcs_host(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
 
     /* Now write all of the BASE registers that are used for the host. */
     __vmwrite(VMCS_HOST_GDTR_BASE, vcpu->gdt_cfg.host_gdtr.base_address);
-    __vmwrite(VMCS_HOST_GS_BASE, vcpu->guest_ctrl_regs.gs_base);
     __vmwrite(VMCS_HOST_IDTR_BASE, vmm->init.host_idtr.base_address);
 
+    /*
+     * We (ab)use the GS_BASE field to store out vCPU context, so that
+     * when we're in host context it's easy to retrieve which vCPU we are
+     * via the GS_BASE field.
+     */
+    __vmwrite(VMCS_HOST_GS_BASE, (uintptr_t)vcpu);
 
     /* Get the GDT information for FS & TR so we can write these for the host VMCS. */
     struct gdt_entry entry;
@@ -572,8 +577,8 @@ static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
     struct vcpu_ctx *vcpu = vmem_alloc(sizeof(struct vcpu_ctx), MEM_WRITE);
     die_on(!vcpu, L"Unable to allocate vCPU %ld context.", proc_idx);
 
-    /* Set the global context so that it includes this vCPU's context pointer. */
-    vmm->vcpu[proc_idx] = vcpu;
+    /* Set the pointer so we can retrive VMM context from the vCPU context. */
+    vcpu->vmm = vmm;
 
     VMM_PRINT(L"Initialising vCPU %ld vmm ctx 0x%lX vcpu ctx 0x%lX.\n", proc_idx, vmm, vcpu);
 

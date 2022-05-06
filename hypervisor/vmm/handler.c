@@ -252,7 +252,7 @@ __attribute__((ms_abi)) void handler_guest_to_host(struct vcpu_context *guest_ct
      * Find the vcpu_ctx structure by backtracing from the guest_ctx which we can
      * assume was stored on the host_stack.
      */
-    struct vcpu_ctx *vcpu = (struct vcpu_ctx *)((uintptr_t)(guest_ctx + 1) - HOST_STACK_SIZE);
+    struct vcpu_ctx *vcpu = vmm_get_vcpu_ctx();
 
     /* Indicate running as host and then copy the guest context from stack to vcpu struct. */
     vcpu->running_as_guest = false;

@@ -1,6 +1,7 @@
 #ifndef VMM_COMMON_H
 #define VMM_COMMON_H
 
+#include "platform/intrin.h"
 #include "vmm_reg.h"
 #include "ia32_compact.h"
 
@@ -22,7 +23,6 @@ struct vmm_ctx {
     __attribute__ ((aligned (PAGE_SIZE))) uint8_t msr_trap_bitmap[PAGE_SIZE];
 
     struct vmm_init_params init;
-    struct vcpu_ctx *vcpu[VCPU_MAX];
     struct ept_ctx *ept;
 };
 
@@ -36,7 +36,20 @@ struct vcpu_ctx {
     struct vcpu_context guest_context;
     struct gdt_config gdt_cfg;
 
+    struct vmm_ctx *vmm;
     bool running_as_guest;
 };
+
+static inline struct vcpu_ctx *vmm_get_vcpu_ctx(void)
+{
+    /* 
+     * Dirty hack, as GS_BASE is actually unused on x86_64
+     * we can use this field in the host context to store/retrieve
+     * the vCPU context pointer.
+     */
+    struct vcpu_ctx *vcpu = (struct vcpu_ctx *)__vmread(VMCS_HOST_GS_BASE);
+    die_on(!vcpu, L"vCPU context not correct.\n");
+    return vcpu;
+}
 
 #endif /* VMM_COMMON_H */
