@@ -1,5 +1,6 @@
 #include "platform/standard.h"
 #include "platform/intrin.h"
+#include "vmm/vmm_common.h"
 #include "idt.h"
 
 struct idt_entry {
@@ -37,12 +38,6 @@ struct exception_stack {
 	uint64_t rip;
 	uint64_t cs;
 	rfl r_flags;
-};
-
-struct cached_interrupt {
-    uint64_t vector;
-    uint64_t error_code;
-    bool pending;
 };
 
 #define DEBUG_IDT
@@ -93,10 +88,13 @@ void idt_exception_handler(const struct exception_stack *stack)
            stack->interrupt_number,
            stack->error_code);
 
-    /* TODO: We need to deal with SMP & how do we determine which to deliver to? */
-    cached_int.vector = stack->interrupt_number;
-    cached_int.error_code = stack->error_code;
-    cached_int.pending = true;
+    /*
+     * Set the pending interrupt within the VMM, on this vCPU's next
+     * VMENTER the interrupt will be delivered to the guest.
+     */
+    exception_error_code ec = { 0 };
+    ec.index = (uint32_t)stack->error_code;
+    vmm_set_cached_interrupt((exception_vector)stack->interrupt_number, ec);
 }
 
 void idt_init(segment_descriptor_register_64 *orig_idtr, segment_descriptor_register_64 *new_idtr)
@@ -117,17 +115,4 @@ void idt_init(segment_descriptor_register_64 *orig_idtr, segment_descriptor_regi
 
     IDT_PRINT(L"New IDTR base_addr %lX limit %X\n",
               new_idtr->base_address, new_idtr->limit);
-}
-
-bool idt_pending_interrupt(exception_vector *vector, exception_error_code *ec)
-{
-    bool pending = cached_int.pending;
-    if (pending) {
-        cached_int.pending = false;
-
-        *vector = (exception_vector)cached_int.vector;
-        ec->flags = cached_int.error_code;
-    }
-
-    return pending;
 }

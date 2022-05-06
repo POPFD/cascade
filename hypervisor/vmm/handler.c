@@ -63,7 +63,7 @@ static void inject_guest_event(exception_vector vector, exception_error_code cod
         __vmwrite(VMCS_CTRL_ENTRY_EXCEPTION_ERRCODE, code.flags);
 }
 
-static void handle_cached_interrupts(void)
+static void handle_cached_interrupts(struct vcpu_ctx *vcpu)
 {
     /*
      * Check to see if there are any pending interrupts
@@ -73,12 +73,11 @@ static void handle_cached_interrupts(void)
      * We only do this if there is NOT already a pending
      * interrupt.
      */
-    exception_vector vec;
-    exception_error_code ec;
-    if (idt_pending_interrupt(&vec, &ec)) {
-        HANDLER_PRINT(L"Forwarded cached interrupt vector 0x%lX with ec 0x%lX to guest\n",
-                      vec, ec.flags);
-        inject_guest_event(vec, ec);
+    if (vcpu->cached_int.pending) {
+        HANDLER_PRINT(L"Forwarding vector 0x%lX error code 0x%lX\n",
+                      vcpu->cached_int.vector, vcpu->cached_int.code);
+        inject_guest_event(vcpu->cached_int.vector, vcpu->cached_int.code);
+        vcpu->cached_int.pending = false;
     }
 }
 
@@ -232,7 +231,7 @@ static void handle_exit_reason(struct vcpu_ctx *vcpu)
         __vmwrite(VMCS_GUEST_RIP, guest_rip);
     }
 
-    handle_cached_interrupts();
+    handle_cached_interrupts(vcpu);
 }
 
 __attribute__((ms_abi)) void handler_guest_to_host(struct vcpu_context *guest_ctx)

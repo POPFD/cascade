@@ -18,6 +18,23 @@ struct vmm_init_params {
     __attribute__((aligned(0x10))) segment_descriptor_register_64 host_idtr;
 };
 
+/*
+ * Holds whether a vCPU currently has a cached interrupt
+ * to deliver to the guest.
+ *
+ * No synchronisation method is needed for this as
+ * set/get of this structure will happen within same
+ * vCPU.
+ *
+ * TODO: HOWEVER we should probably account for multiple
+ * interrupts happening within same VMEXIT frame eventually.
+ */
+struct cached_interrupt {
+    exception_vector vector;
+    exception_error_code code;
+    bool pending;
+};
+
 /* Holds the global context for the VMM. */
 struct vmm_ctx {
     __attribute__ ((aligned (PAGE_SIZE))) uint8_t msr_trap_bitmap[PAGE_SIZE];
@@ -35,6 +52,7 @@ struct vcpu_ctx {
     struct control_registers guest_ctrl_regs;
     struct vcpu_context guest_context;
     struct gdt_config gdt_cfg;
+    struct cached_interrupt cached_int;
 
     struct vmm_ctx *vmm;
     bool running_as_guest;
@@ -50,6 +68,15 @@ static inline struct vcpu_ctx *vmm_get_vcpu_ctx(void)
     struct vcpu_ctx *vcpu = (struct vcpu_ctx *)__vmread(VMCS_HOST_GS_BASE);
     die_on(!vcpu, L"vCPU context not correct.\n");
     return vcpu;
+}
+
+static inline void vmm_set_cached_interrupt(exception_vector vector, exception_error_code code)
+{
+    struct vcpu_ctx *vcpu = vmm_get_vcpu_ctx();
+
+    vcpu->cached_int.vector = vector;
+    vcpu->cached_int.code = code;
+    vcpu->cached_int.pending = true;
 }
 
 #endif /* VMM_COMMON_H */
