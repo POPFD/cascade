@@ -39,6 +39,12 @@ struct exception_stack {
 	rfl r_flags;
 };
 
+struct cached_interrupt {
+    uint64_t vector;
+    uint64_t error_code;
+    bool pending;
+};
+
 #define DEBUG_IDT
 #ifdef DEBUG_IDT
     #define IDT_PRINT(...) debug_print(__VA_ARGS__)
@@ -54,6 +60,9 @@ extern void *interrupt_vector_table[];
 
 /* The descriptor table that holds an IDT entry for each vector. */
 __attribute__((aligned(0x10))) static struct idt_entry idt_table[IDT_ENTRY_COUNT] = { 0 };
+
+/* Holds any interrupts caught in HOST that need to be forwarded to guest. */
+struct cached_interrupt cached_int = { 0 };
 
 static void set_entry(uint8_t vector, void *isr, uint8_t gate_type)
 {
@@ -76,13 +85,18 @@ static void set_entry(uint8_t vector, void *isr, uint8_t gate_type)
 void idt_exception_handler(const struct exception_stack *stack)
 {
     (void)stack;
-    /* For now, just hang the computer until we have something better to do. */
-    IDT_PRINT(L"rip %lX vec 0x%X[%d] err %d\n",
-              stack->rip, stack->interrupt_number, stack->interrupt_number, stack->error_code);
 
-    /* DEBUG: If one of the defined interrupts stop and wait for processing. */
-    die_on(stack->interrupt_number < 0x14, L"Unhandled interrupt rip %lX vec 0x%X[%d] err %d\n",
-           stack->rip, stack->interrupt_number, stack->interrupt_number, stack->error_code);
+    /* If it is an interrupt that is device specific we should deal with this properly. */
+    die_on(stack->interrupt_number < 0x20, L"Unhandled interrupt rip %lX vec 0x%X[%d] err 0x%X\n",
+           stack->rip,
+           stack->interrupt_number,
+           stack->interrupt_number,
+           stack->error_code);
+
+    /* TODO: We need to deal with SMP & how do we determine which to deliver to? */
+    cached_int.vector = stack->interrupt_number;
+    cached_int.error_code = stack->error_code;
+    cached_int.pending = true;
 }
 
 void idt_init(segment_descriptor_register_64 *orig_idtr, segment_descriptor_register_64 *new_idtr)
@@ -97,9 +111,23 @@ void idt_init(segment_descriptor_register_64 *orig_idtr, segment_descriptor_regi
     new_idtr->limit = (uint16_t)sizeof(struct idt_entry) * IDT_ENTRY_COUNT - 1;
 
     /* Fill out all of the IDT entries with their relevant stubs. */
-    for (int i = 0; i < IDT_ENTRY_COUNT; i++)
+    for (int i = 0; i < IDT_ENTRY_COUNT; i++) {
         set_entry(i, interrupt_vector_table[i], SEGMENT_DESCRIPTOR_TYPE_INTERRUPT_GATE);
+    }
 
     IDT_PRINT(L"New IDTR base_addr %lX limit %X\n",
               new_idtr->base_address, new_idtr->limit);
+}
+
+bool idt_pending_interrupt(exception_vector *vector, exception_error_code *ec)
+{
+    bool pending = cached_int.pending;
+    if (pending) {
+        cached_int.pending = false;
+
+        *vector = (exception_vector)cached_int.vector;
+        ec->flags = cached_int.error_code;
+    }
+
+    return pending;
 }

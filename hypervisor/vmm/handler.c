@@ -1,5 +1,6 @@
 #include "platform/standard.h"
 #include "platform/intrin.h"
+#include "interrupt/idt.h"
 #include "vmm_common.h"
 #include "ia32_compact.h"
 
@@ -48,6 +49,11 @@ static void inject_guest_event(exception_vector vector, exception_error_code cod
             break;
     }
 
+    /* Override if vector was greater than 0x20 */
+    if (vector >= 0x20) {
+        type = external_interrupt;
+    }
+
     info.vector = vector;
     info.interruption_type = type;
     info.valid = true;
@@ -55,6 +61,25 @@ static void inject_guest_event(exception_vector vector, exception_error_code cod
 
     if (info.deliver_error_code)
         __vmwrite(VMCS_CTRL_ENTRY_EXCEPTION_ERRCODE, code.flags);
+}
+
+static void handle_cached_interrupts(void)
+{
+    /*
+     * Check to see if there are any pending interrupts
+     * to be delivered that were caught from the host IDT
+     * that need to be redirected to the guest.
+     * 
+     * We only do this if there is NOT already a pending
+     * interrupt.
+     */
+    exception_vector vec;
+    exception_error_code ec;
+    if (idt_pending_interrupt(&vec, &ec)) {
+        HANDLER_PRINT(L"Forwarded cached interrupt vector 0x%lX with ec 0x%lX to guest\n",
+                      vec, ec.flags);
+        inject_guest_event(vec, ec);
+    }
 }
 
 static bool handle_cpuid(struct vcpu_ctx *vcpu, bool *move_to_next)
@@ -186,7 +211,7 @@ static void handle_exit_reason(struct vcpu_ctx *vcpu)
            L"Exit reason 0x%lX rip 0x%lX not declared in handler table\n",
            reason, vcpu->guest_context.rip);
 
-    HANDLER_PRINT(L"VMEXIT reason: 0x%lX rip: 0x%lX\n", reason, vcpu->guest_context.rip);
+    HANDLER_PRINT(L"reason: 0x%lX rip: 0x%lX\n", reason, vcpu->guest_context.rip);
     bool move_to_next_instr = false;
     bool success = EXIT_HANDLERS[reason](vcpu, &move_to_next_instr);
 
@@ -206,6 +231,8 @@ static void handle_exit_reason(struct vcpu_ctx *vcpu)
         guest_rip += __vmread(VMCS_EXIT_INSTR_LENGTH);
         __vmwrite(VMCS_GUEST_RIP, guest_rip);
     }
+
+    handle_cached_interrupts();
 }
 
 __attribute__((ms_abi)) void handler_guest_to_host(struct vcpu_context *guest_ctx)
