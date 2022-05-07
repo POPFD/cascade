@@ -102,7 +102,7 @@ static bool handle_cpuid(struct vcpu_ctx *vcpu, bool *move_to_next)
 #pragma GCC diagnostic ignored "-Wmultichar"
     switch (target) {
     case CPUID_VERSION_INFO:
-        leafs[2] |= CPUID_VI_BIT_HYPERVISOR_PRESENT;
+        leafs[2] &= ~(uint64_t)CPUID_VI_BIT_HYPERVISOR_PRESENT;
         break;
     case HYPERV_CPUID_VENDOR_AND_MAX_FUNCTIONS:
         leafs[0] = HYPERV_CPUID_INTERFACE;
