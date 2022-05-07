@@ -35,7 +35,7 @@ struct ept_ctx {
 
     /* List of MTRR data, not all may be valid as each processor arch
      * can vary depending on the amount of MTRRs implemented. */
-    struct mtrr_data mtrr[IA32_MTRR_VARIABLE_COUNT];
+    struct mtrr_data mtrr[IA32_MTRR_COUNT];
 };
 
 static void gather_mtrr_list(struct ept_ctx *ctx)
@@ -74,7 +74,7 @@ static uint32_t adjust_memory_type(struct ept_ctx *ctx, uintptr_t addr, uint32_t
     /* Check to see if the specified address falls within
      * any of the MTRR ranges, if so we need to adjust the
      * effective memory type. */
-    for (int i = 0; i < IA32_MTRR_VARIABLE_COUNT; i++) {
+    for (int i = 0; i < IA32_MTRR_COUNT; i++) {
 
         /* Not a valid entry, skip. */
         if (!ctx->mtrr[i].valid)
