@@ -66,7 +66,7 @@ static inline struct vcpu_ctx *vmm_get_vcpu_ctx(void)
      * the vCPU context pointer.
      */
     struct vcpu_ctx *vcpu = (struct vcpu_ctx *)__vmread(VMCS_HOST_GS_BASE);
-    die_on(!vcpu, L"vCPU context not correct.\n");
+    die_on(!vcpu, "vCPU context not correct.");
     return vcpu;
 }
 

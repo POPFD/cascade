@@ -2,6 +2,7 @@
 #include <efilib.h>
 #include "platform/standard.h"
 #include "platform/efi_plat.h"
+#include "platform/serial.h"
 #include "memory/pmem.h"
 #include "memory/vmem.h"
 #include "interrupt/idt.h"
@@ -16,7 +17,7 @@ efi_main (EFI_HANDLE image_handle, EFI_SYSTEM_TABLE *system_table)
   EFI_LOADED_IMAGE *loaded_image = NULL;
   uefi_call_wrapper(system_table->BootServices->HandleProtocol, 3,
                     image_handle, &gEfiLoadedImageProtocolGuid, &loaded_image);
-  debug_print(L"EFI image loaded at: 0x%lX\n", loaded_image->ImageBase);
+  debug_print("EFI image loaded at: 0x%lX", loaded_image->ImageBase);
 
 //#define DEBUG_IDA
 #ifdef DEBUG_IDA
@@ -30,6 +31,7 @@ efi_main (EFI_HANDLE image_handle, EFI_SYSTEM_TABLE *system_table)
   struct vmm_init_params vmm_params = {};
 
   efi_plat_init(system_table);
+  serial_init();
   pmem_init();
   vmem_init(&vmm_params.guest_cr3, &vmm_params.host_cr3);
   idt_init(&vmm_params.guest_idtr, &vmm_params.host_idtr);
@@ -39,7 +41,7 @@ efi_main (EFI_HANDLE image_handle, EFI_SYSTEM_TABLE *system_table)
   cpuid_eax_01 version_info;
   CPUID_LEAF_READ(CPUID_VERSION_INFO, version_info);
 
-  debug_print(L"Exiting.\n");
+  debug_print("Exiting.");
 
   return EFI_SUCCESS;
 }

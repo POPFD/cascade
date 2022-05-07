@@ -90,9 +90,9 @@ uintptr_t pmem_alloc_page(void)
 
 uintptr_t pmem_alloc_contiguous(size_t bytes)
 {
-    die_on(!bytes, L"Invalid parameter unable to allocate 0 bytes.");
+    die_on(!bytes, "Invalid parameter unable to allocate 0 bytes.");
     die_on(bytes > (NUMBER_BITS_TYPE(pmem_bitmap[0]) * PAGE_SIZE),
-           L"Current pmem allocator cannot allocate enough pages to fit %d bytes",
+           "Current pmem allocator cannot allocate enough pages to fit %d bytes",
            bytes);
 
     const size_t number_pages = PAGE_COUNT(bytes);

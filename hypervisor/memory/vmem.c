@@ -70,23 +70,23 @@ static void init_identity_table(struct vmem_ctx *ctx)
 
 static void create_table_entries(uintptr_t addr, bool write, bool exec)
 {
-    VMEM_PRINT(L"Creating page tables for address %lX write %d exec %d\n", addr, write, exec);
+    VMEM_PRINT("Creating page tables for address %lX write %d exec %d", addr, write, exec);
 
     size_t pml4_idx = ADDRMASK_PML4_INDEX(addr);
     size_t pdpte_idx = ADDRMASK_PDPTE_INDEX(addr);
     size_t pde_idx = ADDRMASK_PDE_INDEX(addr);
     size_t pte_idx = ADDRMASK_PTE_INDEX(addr);
-    VMEM_PRINT(L"PML4[%d] PDPTE[%d] PDE[%d] PTE[%d]\n", pml4_idx, pdpte_idx, pde_idx, pte_idx);
+    VMEM_PRINT("PML4[%d] PDPTE[%d] PDE[%d] PTE[%d]", pml4_idx, pdpte_idx, pde_idx, pte_idx);
 
     pml4e_64 *pml4e = &m_ctx->pml4[pml4_idx];
 
     if (!pml4e->present) {
         pml4e->write = true;
         pml4e->page_frame_number = pmem_alloc_page() / PAGE_SIZE;
-        die_on(!pml4e->page_frame_number, L"Could not allocate PML4E for addr %lX\n", addr);
+        die_on(!pml4e->page_frame_number, "Could not allocate PML4E for addr %lX", addr);
         pml4e->present = true;
     }
-    VMEM_PRINT(L"--- PDPT base PFN[ADDR] %lX[%lX]\n",
+    VMEM_PRINT("--- PDPT base PFN[ADDR] %lX[%lX]",
                 pml4e->page_frame_number,
                 pml4e->page_frame_number * PAGE_SIZE);
 
@@ -96,10 +96,10 @@ static void create_table_entries(uintptr_t addr, bool write, bool exec)
     if (!pdpte->present) {
         pdpte->write = true;
         pdpte->page_frame_number = pmem_alloc_page() / PAGE_SIZE;
-        die_on(!pdpte->page_frame_number, L"Could not allocate PDPTE for addr %lX\n", addr);
+        die_on(!pdpte->page_frame_number, "Could not allocate PDPTE for addr %lX", addr);
         pdpte->present = true;
     }
-    VMEM_PRINT(L"--- PD base PFN[ADDR] %lX[%lX]\n",
+    VMEM_PRINT("--- PD base PFN[ADDR] %lX[%lX]",
                 pdpte->page_frame_number,
                 pdpte->page_frame_number * PAGE_SIZE);
 
@@ -109,23 +109,23 @@ static void create_table_entries(uintptr_t addr, bool write, bool exec)
     if (!pde->present) {
         pde->write = true;
         pde->page_frame_number = pmem_alloc_page() / PAGE_SIZE;
-        die_on(!pde->page_frame_number, L"Could not allocate PDE for addr %lX\n", addr);
+        die_on(!pde->page_frame_number, "Could not allocate PDE for addr %lX", addr);
         pde->present = true;
     }
-    VMEM_PRINT(L"--- PT base PFN[ADDR] %lX[%lX]\n",
+    VMEM_PRINT("--- PT base PFN[ADDR] %lX[%lX]",
                 pde->page_frame_number,
                 pde->page_frame_number * PAGE_SIZE);
 
     pte_64 *pt = (pte_64 *)((uintptr_t)pde->page_frame_number * PAGE_SIZE);
     pte_64 *pte = &pt[pte_idx];
 
-    die_on(pte->present, L"PTE is already present for addr %lX\n", addr);
+    die_on(pte->present, "PTE is already present for addr %lX", addr);
     pte->write = write;
     pte->execute_disable = !exec;
     pte->page_frame_number = pmem_alloc_page() / PAGE_SIZE;
-    die_on(!pte->page_frame_number, L"Could not allocate PTE for addr %lX\n", addr);
+    die_on(!pte->page_frame_number, "Could not allocate PTE for addr %lX", addr);
     pte->present = true;
-    VMEM_PRINT(L"--- Allocated pmem PFN[ADDR] %lX[%lX]\n",
+    VMEM_PRINT("--- Allocated pmem PFN[ADDR] %lX[%lX]",
                 pte->page_frame_number,
                 pte->page_frame_number * PAGE_SIZE);
 
@@ -137,7 +137,7 @@ static void create_table_entries(uintptr_t addr, bool write, bool exec)
     uintptr_t actual_pa = pte->page_frame_number * PAGE_SIZE;
     uintptr_t calc_pa = mem_va_to_pa(tmp_cr3, (void *)addr);
     die_on(actual_pa != calc_pa,
-           L"Physical addr %lX does not match calculated physical addr %lX\n",
+           "Physical addr %lX does not match calculated physical addr %lX",
            actual_pa, calc_pa);
 #endif
 }
@@ -146,7 +146,7 @@ void vmem_init(cr3 *original_cr3, cr3 *new_cr3)
 {
     /* Store the original CR3 value before initialising the virtual-memory manager. */
     original_cr3->flags = __readcr3();
-    VMEM_PRINT(L"Storing original CR3 %lX\n", original_cr3->flags);
+    VMEM_PRINT("Storing original CR3 %lX", original_cr3->flags);
 
     /*
      * Allocated a page for the vmem context.
@@ -155,7 +155,7 @@ void vmem_init(cr3 *original_cr3, cr3 *new_cr3)
      * so we will allocate via pmem (it will be identity mapped either way)
      */
     m_ctx = (struct vmem_ctx *)pmem_alloc_contiguous(sizeof(struct vmem_ctx));
-    die_on(!m_ctx, L"Unable to allocate contact for virtual memory manager.\n");
+    die_on(!m_ctx, "Unable to allocate contact for virtual memory manager.");
 
     /* Clear main root PML4. */
     memset(m_ctx->pml4, 0, sizeof(m_ctx->pml4));
@@ -171,7 +171,7 @@ void vmem_init(cr3 *original_cr3, cr3 *new_cr3)
     new_cr3->page_level_write_through = original_cr3->page_level_write_through;
     new_cr3->address_of_page_directory = ((uintptr_t)m_ctx->pml4) / PAGE_SIZE;
     __writecr3(new_cr3->flags);
-    VMEM_PRINT(L"New CR3 value loaded %lX\n", new_cr3->flags);
+    VMEM_PRINT("New CR3 value loaded %lX", new_cr3->flags);
 }
 
 void *vmem_alloc(size_t size, unsigned int flags)
@@ -183,7 +183,7 @@ void *vmem_alloc(size_t size, unsigned int flags)
 
     /* Align size to next largest page. */
     size = (size & PAGE_MASK) ? ((size + PAGE_SIZE) & ~PAGE_MASK) : size;
-    VMEM_PRINT(L"Attempting allocation of size: %ld\n", size);
+    VMEM_PRINT("Attempting allocation of size: %ld", size);
 
     /* Determine info from flags. */
     bool write = (flags & MEM_WRITE) != 0;
@@ -202,9 +202,9 @@ void *vmem_alloc(size_t size, unsigned int flags)
 
     m_ctx->next_free_addr = end_addr;
     die_on(m_ctx->next_free_addr < DYN_VMEM_START,
-           L"The virtual memory manager's next_free_addr has iterated back into the" \
-           L"identity mapped area, we should probably create an algorithm to reuse" \
-           L"freed memory ranges.");
+           "The virtual memory manager's next_free_addr has iterated back into the" \
+           "identity mapped area, we should probably create an algorithm to reuse" \
+           "freed memory ranges.");
 
     return (void *)start_addr;
 }
@@ -215,7 +215,7 @@ void vmem_free(void *addr, size_t size)
      * we keep a VAD style map logging all of our allocations
      * (I'd rather kill myself than add more complexity to this
      * considering this is not the main goal of the project). */
-    die_on(true, L"vmem_free not implemented as of yet.");
+    die_on(true, "vmem_free not implemented as of yet.");
     (void)addr;
     (void)size;
 }

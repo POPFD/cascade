@@ -61,6 +61,8 @@ static void inject_guest_event(exception_vector vector, exception_error_code cod
 
     if (info.deliver_error_code)
         __vmwrite(VMCS_CTRL_ENTRY_EXCEPTION_ERRCODE, code.flags);
+
+    HANDLER_PRINT("Injected guest event 0x%lX type 0x%lX code 0x%lX", vector, type, code.flags);
 }
 
 static void handle_cached_interrupts(struct vcpu_ctx *vcpu)
@@ -74,7 +76,7 @@ static void handle_cached_interrupts(struct vcpu_ctx *vcpu)
      * interrupt.
      */
     if (vcpu->cached_int.pending) {
-        HANDLER_PRINT(L"Forwarding vector 0x%lX error code 0x%lX\n",
+        HANDLER_PRINT("Forwarding vector 0x%lX error code 0x%lX",
                       vcpu->cached_int.vector, vcpu->cached_int.code);
         inject_guest_event(vcpu->cached_int.vector, vcpu->cached_int.code);
         vcpu->cached_int.pending = false;
@@ -203,20 +205,20 @@ static void handle_exit_reason(struct vcpu_ctx *vcpu)
     size_t reason = __vmread(VMCS_EXIT_REASON) & 0xFFFF;
 
     die_on(reason >= ARRAY_SIZE(EXIT_HANDLERS),
-           L"Exit reason 0x%lX rip 0x%lX not within range of handler table\n",
+           "Exit reason 0x%lX rip 0x%lX not within range of handler table",
            reason, vcpu->guest_context.rip);
 
     die_on(!EXIT_HANDLERS[reason],
-           L"Exit reason 0x%lX rip 0x%lX not declared in handler table\n",
+           "Exit reason 0x%lX rip 0x%lX not declared in handler table",
            reason, vcpu->guest_context.rip);
 
-    HANDLER_PRINT(L"reason: 0x%lX rip: 0x%lX\n", reason, vcpu->guest_context.rip);
+    HANDLER_PRINT("reason: 0x%lX rip: 0x%lX", reason, vcpu->guest_context.rip);
     bool move_to_next_instr = false;
     bool success = EXIT_HANDLERS[reason](vcpu, &move_to_next_instr);
 
     size_t qual = __vmread(VMCS_EXIT_QUALIFICATION);
     die_on(!success,
-           L"Exit handler for 0x%lX rip 0x%lX failed with exit qualification 0x%lX\n",
+           "Exit handler for 0x%lX rip 0x%lX failed with exit qualification 0x%lX",
            reason, vcpu->guest_context.rip, qual);
 
     /*

@@ -60,7 +60,7 @@ static void gather_mtrr_list(struct ept_ctx *ctx)
             mtrr->phys_base_max = mtrr->phys_base_min + ((1ull << bit_idx) - 1);
         }
 
-        EPT_PRINT(L"Valid %d type %d base_min %lX base_max %lX\n",
+        EPT_PRINT("Valid %d type %d base_min %lX base_max %lX",
                   mtrr->valid, mtrr->type, mtrr->phys_base_min, mtrr->phys_base_max);
     }
 }
@@ -94,7 +94,7 @@ struct ept_ctx *ept_init(void)
      * As we are hyperjacking this will consist of a
      * 1:1 guest/host identity map to aid in conversion. */
     struct ept_ctx *ctx = vmem_alloc(sizeof(struct ept_ctx), MEM_WRITE);
-    die_on(!ctx, L"Unable to allocate context for EPT.");
+    die_on(!ctx, "Unable to allocate context for EPT.");
 
     /* Gather the MTRR layout list so that this can be used in the future. */
     gather_mtrr_list(ctx);
@@ -133,7 +133,7 @@ struct ept_ctx *ept_init(void)
         uintptr_t base_addr = GiB(i);
         ctx->pml3[i].memory_type = adjust_memory_type(ctx, base_addr, MEMORY_TYPE_WB);
 
-        EPT_PRINT(L"PML3[%d] for physical addr 0x%lX with type 0x%X\n",
+        EPT_PRINT("PML3[%d] for physical addr 0x%lX with type 0x%X",
                   i, base_addr, ctx->pml3[i].memory_type);
     }
 

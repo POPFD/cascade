@@ -82,7 +82,7 @@ void idt_exception_handler(const struct exception_stack *stack)
     (void)stack;
 
     /* If it is an interrupt that is device specific we should deal with this properly. */
-    die_on(stack->interrupt_number < 0x20, L"Unhandled interrupt rip %lX vec 0x%X[%d] err 0x%X\n",
+    die_on(stack->interrupt_number < 0x20, "Unhandled interrupt rip %lX vec 0x%X[%d] err 0x%X",
            stack->rip,
            stack->interrupt_number,
            stack->interrupt_number,
@@ -101,7 +101,7 @@ void idt_init(segment_descriptor_register_64 *orig_idtr, segment_descriptor_regi
 {
     /* Store the original IDTR. */
     __sidt(orig_idtr);
-    IDT_PRINT(L"Original IDTR base_addr %lX limit %X\n",
+    IDT_PRINT("Original IDTR base_addr %lX limit %X",
               orig_idtr->base_address, orig_idtr->limit);
 
     /* Create the IDTR. */
@@ -113,6 +113,6 @@ void idt_init(segment_descriptor_register_64 *orig_idtr, segment_descriptor_regi
         set_entry(i, interrupt_vector_table[i], SEGMENT_DESCRIPTOR_TYPE_INTERRUPT_GATE);
     }
 
-    IDT_PRINT(L"New IDTR base_addr %lX limit %X\n",
+    IDT_PRINT("New IDTR base_addr %lX limit %X",
               new_idtr->base_address, new_idtr->limit);
 }

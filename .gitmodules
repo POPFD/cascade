@@ -4,3 +4,6 @@
 [submodule "uefi-run"]
 	path = uefi-run
 	url = git@github.com:POPFD/uefi-run.git
+[submodule "hypervisor/platform/printf"]
+	path = hypervisor/platform/printf
+	url = https://github.com/mpaland/printf.git

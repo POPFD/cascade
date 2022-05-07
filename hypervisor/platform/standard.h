@@ -8,7 +8,9 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include "printf/printf.h"
 #include "arch.h"
+#include "serial.h"
 #include "intrin.h"
 
 /* Size definitions */
@@ -34,19 +36,21 @@
 #define NUMBER_BITS_TYPE(type) (sizeof(type) * 8)
 
 /* Debug printing */
-static inline void print_format(char *file, const char *func, int line, const CHAR16 *format, ...)
+static inline void print_buffer(const char *format, ...)
 {
     va_list marker;
-
-    uint64_t tsc = rdmsr(0x00000010);
+    char tmp_buff[512] = { 0 };
 
     va_start(marker, format);
-    APrint((const CHAR8 *)"[0x%lX] %a %a (L%04d) - ", tsc, file, func, line);
-    VPrint((const CHAR16 *)format, marker);
+    vsnprintf(tmp_buff, sizeof(tmp_buff), format, marker);
     va_end(marker);
+    serial_print(tmp_buff);
 }
 
-#define debug_print(format, ...) print_format(__FILE__, __func__, __LINE__, format, ##__VA_ARGS__)
+#define debug_print(format, ...) \
+    print_buffer("[0x%lX] %s %s (L%04d) - ", rdmsr(0x00000010), __FILE__, __func__, __LINE__); \
+    print_buffer(format, ##__VA_ARGS__); \
+    print_buffer("\r\n");
 
 #define die_on(cond, ...) do { \
         if (cond) { \
@@ -55,6 +59,6 @@ static inline void print_format(char *file, const char *func, int line, const CH
         } \
     } while (0)
 
-#define assert(cond) die_on(!(cond), L"assertion failed.\n");
+#define assert(cond) die_on(!(cond), "assertion failed.");
 
 #endif /* STANDARD_H */

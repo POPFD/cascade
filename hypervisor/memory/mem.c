@@ -44,7 +44,7 @@ uintptr_t mem_va_to_pa(cr3 table, void *va)
 
     switch (level) {
     case 4:
-        die_on(true, L"Invalid level of 4 retrieved for va %lX\n", va);
+        die_on(true, "Invalid level of 4 retrieved for va %lX", va);
         break;
     case 3:
     {
@@ -65,7 +65,7 @@ uintptr_t mem_va_to_pa(cr3 table, void *va)
         return (pte.page_frame_number * PAGE_SIZE) + ADDRMASK_PTE_OFFSET(va);
     }
     default:
-        die_on(true, L"Invalid pte level %d for va %lX\n", level, va);
+        die_on(true, "Invalid pte level %d for va %lX", level, va);
         break;
     }
 }

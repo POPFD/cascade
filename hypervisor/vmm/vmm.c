@@ -38,57 +38,63 @@ const size_t VMM_HYPERJACK_STACK_OFFSET = offsetof(struct vcpu_ctx, host_stack) 
 
 static void probe_capabilities()
 {
-    VMM_PRINT(L"Checking CPU capabilities.\n");
+    VMM_PRINT("Checking CPU capabilities.");
 
     cpuid_eax_01 version_info;
     int rc = CPUID_LEAF_READ(CPUID_VERSION_INFO, version_info);
-    die_on(!rc, L"Unable to query version information.");
-    die_on(!version_info.ecx.virtual_machine_extensions, L"No virtual machine extensions.");
+    die_on(!rc, "Unable to query version information.");
+    die_on(!version_info.ecx.virtual_machine_extensions, "No virtual machine extensions.");
 
     cpuid_eax_80000001 extend_cpu;
     rc = CPUID_LEAF_READ(CPUID_EXTENDED_CPU_SIGNATURE, extend_cpu);
-    die_on(!rc, L"Unable to read extended CPUID signature.");
-    die_on(!extend_cpu.edx.pages_1gb_available, L"No 1GB pages support.");
+    die_on(!rc, "Unable to read extended CPUID signature.");
+    die_on(!extend_cpu.edx.pages_1gb_available, "No 1GB pages support.");
 
     ia32_feature_control_register feature_control;
     feature_control.flags = rdmsr(IA32_FEATURE_CONTROL);
-    die_on(!feature_control.lock_bit, L"Lock bit not set.");
-    die_on(!feature_control.enable_vmx_outside_smx, L"VMX not enabled outside SMX.");
+    die_on(!feature_control.lock_bit, "Lock bit not set.");
+    die_on(!feature_control.enable_vmx_outside_smx, "VMX not enabled outside SMX.");
 
     ia32_vmx_ept_vpid_cap_register ept_vpid;
     ept_vpid.flags = rdmsr(IA32_VMX_EPT_VPID_CAP);
-    die_on(!ept_vpid.page_walk_length_4, L"EPT PML4 not supported.");
-    die_on(!ept_vpid.memory_type_write_back, L"EPT memory type WB not supported.");
-    die_on(!ept_vpid.pdpte_1gb_pages, L"EPT 1GB pages not supported.");
-    die_on(!ept_vpid.pde_2mb_pages, L"EPT 2MB pages not supported.");
+    die_on(!ept_vpid.page_walk_length_4, "EPT PML4 not supported.");
+    die_on(!ept_vpid.memory_type_write_back, "EPT memory type WB not supported.");
+    die_on(!ept_vpid.pdpte_1gb_pages, "EPT 1GB pages not supported.");
+    die_on(!ept_vpid.pde_2mb_pages, "EPT 2MB pages not supported.");
 
-    VMM_PRINT(L"CPU seems to provide all capabilities needed.\n");
+    VMM_PRINT("CPU seems to provide all capabilities needed.");
 }
 
-static void print_gdt(CHAR16 *prefix, segment_descriptor_register_64 *gdtr)
+static void print_gdt(char *prefix, segment_descriptor_register_64 *gdtr)
 {
     (void)prefix;
     (void)gdtr;
 
     #ifdef DEBUG_VMM
-        VMM_PRINT(L"--- %s GDT base %lX limit %lX\n", prefix, gdtr->base_address, gdtr->limit);
+        VMM_PRINT("--- %s GDT base 0x%lX limit 0x%lX", prefix, gdtr->base_address, gdtr->limit);
 
         segment_descriptor_32 *gdt = (segment_descriptor_32 *)gdtr->base_address;
         int desc_max = (gdtr->limit + 1ull) / sizeof(segment_descriptor_32);
         for (int i = 0; i < desc_max; i++) {
             segment_descriptor_32 *curr_desc = (segment_descriptor_32 *)&gdt[i];
 
-            VMM_PRINT(L"------ Descriptor %lX\n", (uintptr_t)curr_desc);
-            VMM_PRINT(L"------ Flags %X\n", curr_desc->flags);
-            VMM_PRINT(L"------ Present %X\n", curr_desc->present);
-            VMM_PRINT(L"------ Type %X\n", curr_desc->type);
-            VMM_PRINT(L"------ Segment limit %X\n",
-                    (curr_desc->segment_limit_high << 16) | curr_desc->segment_limit_low);
-
+            uint32_t seg_lim = (curr_desc->segment_limit_high << 16) | curr_desc->segment_limit_low;
             uintptr_t base_addr = (curr_desc->base_address_high << 24) |
                                 (curr_desc->base_address_middle << 16) |
                                 (curr_desc->base_address_low & UINT16_MAX);
-            VMM_PRINT(L"------ Base address %lX\n\n", base_addr);
+
+            VMM_PRINT("Descriptor 0x%lX\r\n" \
+                      "------ Flags 0x%X\r\n" \
+                      "------ Present 0x%X\r\n" \
+                      "------ Type 0x%X\r\n" \
+                      "------ Segment limit 0x%X\r\n" \
+                      "------ Base address 0x%lX\r\n",
+                      (uintptr_t)curr_desc,
+                      curr_desc->flags,
+                      curr_desc->present,
+                      curr_desc->type,
+                      seg_lim,
+                      base_addr);
         }
     #endif /* DEBUG_VMM */
 }
@@ -104,8 +110,8 @@ static void configure_vcpu_gdt(struct gdt_config *gdt_cfg)
     /* Read the original GDTR and store it so we can use it for the guest later. */
     __sgdt(&gdt_cfg->guest_gdtr);
     __sldt(&gdt_cfg->guest_ldtr);
-    die_on(!gdt_cfg->guest_gdtr.base_address, L"No base address set for guest GDTR");
-    die_on(!gdt_cfg->guest_gdtr.limit, L"No limit set for guest GDTR");
+    die_on(!gdt_cfg->guest_gdtr.base_address, "No base address set for guest GDTR");
+    die_on(!gdt_cfg->guest_gdtr.limit, "No limit set for guest GDTR");
 
     /* For the host GDT we're going to copy the guest GDT and then append
      * a TSS to the GDT as this is required for VMX to be used, unfortunately
@@ -118,14 +124,14 @@ static void configure_vcpu_gdt(struct gdt_config *gdt_cfg)
     uintptr_t host_gdt_phys = mem_va_to_pa(this_cr3, gdt_cfg->host_gdt);
     gdt_cfg->host_gdtr.base_address = host_gdt_phys;
     gdt_cfg->host_gdtr.limit = gdt_cfg->guest_gdtr.limit + sizeof(segment_descriptor_64);
-    VMM_PRINT(L"Host GDTR base %lX limit %lX\n",
+    VMM_PRINT("Host GDTR base %lX limit %lX",
               gdt_cfg->host_gdtr.base_address,
               gdt_cfg->host_gdtr.limit);
 
     /* Append the TR to the end of the GDT. */
     gdt_cfg->host_tr.flags = 0;
     gdt_cfg->host_tr.index = (gdt_cfg->guest_gdtr.limit + 1ull) / sizeof(segment_descriptor_32);
-    VMM_PRINT(L"Host TR index %d\n", gdt_cfg->host_tr.index);
+    VMM_PRINT("Host TR index %d", gdt_cfg->host_tr.index);
 
     uintptr_t tss_pa = mem_va_to_pa(this_cr3, &gdt_cfg->host_tss);
     segment_descriptor_64 tss_desc = { 0 };
@@ -142,7 +148,7 @@ static void configure_vcpu_gdt(struct gdt_config *gdt_cfg)
     segment_descriptor_64 *tss_in_gdt = (segment_descriptor_64 *)&gdt32[gdt_cfg->host_tr.index];
     *tss_in_gdt = tss_desc;
 
-    print_gdt(L"Host", &gdt_cfg->host_gdtr);
+    print_gdt("Host", &gdt_cfg->host_gdtr);
 
     /* Write the new GDTR and TR. */
     uintptr_t phys_gdtr = mem_va_to_pa(this_cr3, &gdt_cfg->host_gdtr);
@@ -159,7 +165,12 @@ static void capture_control_regs(struct control_registers *regs)
     regs->gs_base = rdmsr(IA32_GS_BASE);
     regs->dr7 = __readdr7();
 
-    VMM_PRINT(L"--- cr0 %lX cr3 %lX cr4 %lX debugctl %lX gs_base %lX dr7 %lX\n",
+    VMM_PRINT("--- cr0 %lX\r\n" \
+              "--- cr3 %lX\r\n" \
+              "--- cr4 %lX\r\n" \
+              "--- debugctl %lX\r\n" \
+              "--- gs_base %lX\r\n" \
+              "--- dr7 %lX",
               regs->reg_cr0.flags, regs->reg_cr3.flags, regs->reg_cr4.flags,
               regs->debugctl.flags, regs->gs_base, regs->dr7);
 }
@@ -192,9 +203,9 @@ static void enter_root_mode(struct vcpu_ctx *vcpu)
     void *phys_vmxon = (void *)mem_va_to_pa(this_cr3, &vcpu->host_vmxon);
     void *phys_vmcs = (void *)mem_va_to_pa(this_cr3, &vcpu->guest_vmcs);
 
-    die_on(!__vmxon(&phys_vmxon), L"Unable to enter VMX root mode.");
-    die_on(!__vmclear(&phys_vmcs), L"Unable to clear VMCS.");
-    die_on(!__vmptrld(&phys_vmcs), L"Unable to load the VMCS.");
+    die_on(!__vmxon(&phys_vmxon), "Unable to enter VMX root mode.");
+    die_on(!__vmclear(&phys_vmcs), "Unable to clear VMCS.");
+    die_on(!__vmptrld(&phys_vmcs), "Unable to load the VMCS.");
 }
 
 static uint64_t encode_msr(uint64_t ctrl, uint64_t desired)
@@ -305,7 +316,7 @@ static void setup_vmcs_host(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
 
     __vmwrite(VMCS_HOST_RSP, host_rsp);
     __vmwrite(VMCS_HOST_RIP, host_rip);
-    VMM_PRINT(L"VMCS_HOST_RIP: 0x%lX VMCS_HOST_RSP\n", host_rip, host_rsp);
+    VMM_PRINT("VMCS_HOST_RIP: 0x%lX VMCS_HOST_RSP", host_rip, host_rsp);
 }
 
 static void setup_vmcs_guest(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
@@ -413,11 +424,11 @@ static void setup_vmcs_guest(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
         if (curr_cfg->vmcs_base)
             __vmwrite(curr_cfg->vmcs_base, entry.base);
 
-        VMM_PRINT(L"VMX GDT Entry: %d\n"
-                  L"--- VMCS SEL [0x%lX]: 0x%lX\n"
-                  L"--- VMCS LIM [0x%lX]: 0x%lX\n"
-                  L"--- VMCS AR [0x%lX]: 0x%lX\n"
-                  L"--- VMCS BASE [0x%lX]: 0x%lX\n\n",
+        VMM_PRINT("VMX GDT Entry: %d\r\n" \
+                  "--- VMCS SEL [0x%lX]: 0x%lX\r\n" \
+                  "--- VMCS LIM [0x%lX]: 0x%lX\r\n" \
+                  "--- VMCS AR [0x%lX]: 0x%lX\r\n" \
+                  "--- VMCS BASE [0x%lX]: 0x%lX\r\n",
                   i, 
                   curr_cfg->vmcs_sel, entry.sel,
                   curr_cfg->vmcs_lim, entry.limit,
@@ -490,7 +501,7 @@ static void setup_vmcs_guest(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
     __vmwrite(VMCS_GUEST_RFLAGS, guest_ctx->e_flags);
     __vmwrite(VMCS_GUEST_RSP, guest_rsp);
     __vmwrite(VMCS_GUEST_RIP, guest_rip);
-    VMM_PRINT(L"VMCS_GUEST_RIP: 0x%lX VMCS_GUEST_RSP: 0x%lX PHYS_VCPU: 0x%lX\n",
+    VMM_PRINT("VMCS_GUEST_RIP: 0x%lX VMCS_GUEST_RSP: 0x%lX PHYS_VCPU: 0x%lX",
               guest_rip, guest_rsp, phys_vcpu_ctx);
 }
 
@@ -571,16 +582,16 @@ static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
 
     size_t proc_idx;
     efi_plat_processor_index(&proc_idx);
-    die_on(proc_idx >= VCPU_MAX, L"vCPU index greater than supported by VMM.");
+    die_on(proc_idx >= VCPU_MAX, "vCPU index greater than supported by VMM.");
 
     /* Create the vCPU context structure. */
     struct vcpu_ctx *vcpu = vmem_alloc(sizeof(struct vcpu_ctx), MEM_WRITE);
-    die_on(!vcpu, L"Unable to allocate vCPU %ld context.", proc_idx);
+    die_on(!vcpu, "Unable to allocate vCPU %ld context.", proc_idx);
 
     /* Set the pointer so we can retrive VMM context from the vCPU context. */
     vcpu->vmm = vmm;
 
-    VMM_PRINT(L"Initialising vCPU %ld vmm ctx 0x%lX vcpu ctx 0x%lX.\n", proc_idx, vmm, vcpu);
+    VMM_PRINT("Initialising vCPU %ld vmm ctx 0x%lX vcpu ctx 0x%lX.", proc_idx, vmm, vcpu);
 
     /* Configure the host GDT. */
     configure_vcpu_gdt(&vcpu->gdt_cfg);
@@ -603,14 +614,14 @@ static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
         setup_vmcs_guest(vmm, vcpu);
 
         /* Attempt VMLAUNCH. */
-        VMM_PRINT(L"Attempting VMLAUNCH on vCPU %d with ctx: 0x%lX\n", proc_idx, vcpu);
+        VMM_PRINT("Attempting VMLAUNCH on vCPU %d with ctx: 0x%lX", proc_idx, vcpu);
         __vmlaunch();
 
         /* 
          * If we have got to this point, VMLAUNCH failed.
          * Get failure reason and dump info for debugging. */
         size_t fail_reason = __vmread(VMCS_VM_INSTR_ERROR);
-        debug_print(L"Failed to launch VMX with reason: 0x%lX\n", fail_reason);
+        debug_print("Failed to launch VMX with reason: 0x%lX", fail_reason);
         while (1) {};
     }
 }
@@ -644,9 +655,9 @@ __attribute__((noreturn)) void vmm_hyperjack_handler(struct vcpu_ctx *vcpu)
      * This time with the running_as_guest flag set, therefore the driver
      * should then exit successfully.
      */
-    VMM_PRINT(L"Retrieved vCPU context: 0x%lX\n", (uintptr_t)vcpu);
+    VMM_PRINT("Retrieved vCPU context: 0x%lX", (uintptr_t)vcpu);
 
     vcpu->running_as_guest = true;
     __restore_context(&vcpu->guest_context);
-    die_on(true, L"Shouldn't be here context should have been restored.");
+    die_on(true, "Shouldn't be here context should have been restored.");
 }
