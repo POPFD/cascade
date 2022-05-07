@@ -134,9 +134,26 @@ static bool handle_cpuid(struct vcpu_ctx *vcpu, bool *move_to_next)
 
 static bool handle_xsetbv(struct vcpu_ctx *vcpu, bool *move_to_next)
 {
-    /* TODO: XSETBV shall trigger a #GP if called with an unimplemented
-     *       XCR, or wrong privilege level in guest we should actually handle
-     *       this properly rather than trying to call it blindly. */
+    static const exception_error_code DEFAULT_EC = { 0 };
+
+    /* Check to ensure that os_xsave is enabled. */
+    cr4 guest_cr4;
+    guest_cr4.flags = __vmread(VMCS_GUEST_CR4);
+    if (!guest_cr4.os_xsave) {
+        HANDLER_PRINT("XSETBV when CR4.os_xsave not set");
+        inject_guest_event(invalid_opcode, DEFAULT_EC);
+        *move_to_next = false;
+        return true;
+    }
+
+    /* Check that a valid XCR index is set (only 0 supported). */
+    uint32_t field = (uint32_t)vcpu->guest_context.rcx;
+    if (field) {
+        HANDLER_PRINT("XSETBV invalid XCR field 0x%X", field);
+        inject_guest_event(general_protection, DEFAULT_EC);
+        *move_to_next = false;
+        return true;
+    }
 
     /*
      * Running XSETBV requires os_xsave to be set in CR4
@@ -148,9 +165,8 @@ static bool handle_xsetbv(struct vcpu_ctx *vcpu, bool *move_to_next)
     host_cr4.os_xsave = true;
     __writecr4(host_cr4.flags);
 
-    uint32_t field = (uint32_t)vcpu->guest_context.rcx;
-    uint64_t value = (vcpu->guest_context.rdx << 32) | vcpu->guest_context.rax;
-    
+    uint64_t value = (vcpu->guest_context.rdx << 32) | (uint32_t)vcpu->guest_context.rax;
+
     HANDLER_PRINT("XSETBV field 0x%lX value 0x%lX", field, value);
     __xsetbv(field, value);
     
