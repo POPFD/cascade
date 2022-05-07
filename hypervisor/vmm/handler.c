@@ -86,8 +86,12 @@ static void handle_cached_interrupts(struct vcpu_ctx *vcpu)
 static bool handle_cpuid(struct vcpu_ctx *vcpu, bool *move_to_next)
 {
     /* Read the CPUID into the leafs array. */
+    uint64_t target = vcpu->guest_context.rax;
     uint32_t leafs[4];
     __get_cpuid(vcpu->guest_context.rax, &leafs[0], &leafs[1], &leafs[2], &leafs[3]);
+
+    HANDLER_PRINT("CPUID leaf 0x%lX - 0x%lX 0x%lX 0x%lX 0x%lX",
+                  target, leafs[0], leafs[1], leafs[2], leafs[3]);
 
     /* TODO: Extra handling here? Maybe we want to hide HV, or add HV vendor leafs */
 
@@ -116,8 +120,11 @@ static bool handle_xsetbv(struct vcpu_ctx *vcpu, bool *move_to_next)
     host_cr4.os_xsave = true;
     __writecr4(host_cr4.flags);
 
-    __xsetbv((uint32_t)vcpu->guest_context.rcx,
-             (vcpu->guest_context.rdx << 32) | vcpu->guest_context.rax);
+    uint32_t field = (uint32_t)vcpu->guest_context.rcx;
+    uint64_t value = (vcpu->guest_context.rdx << 32) | vcpu->guest_context.rax;
+    
+    HANDLER_PRINT("XSETBV field 0x%lX value 0x%lX", field, value);
+    __xsetbv(field, value);
     
     *move_to_next = true;
     return true;
@@ -127,6 +134,7 @@ static bool handle_invd(struct vcpu_ctx *vcpu, bool *move_to_next)
 {
     (void)vcpu;
     
+    HANDLER_PRINT("INVD");
     __invd();
     *move_to_next = true;
     return true;
@@ -141,6 +149,7 @@ static bool handle_rdmsr(struct vcpu_ctx *vcpu, bool *move_to_next)
     segment_selector cs;
     cs.flags = __vmread(VMCS_GUEST_CS_SEL);
     if (cs.request_privilege_level != 0) {
+        HANDLER_PRINT("RSMSR 0x%lX wrong RPL 0x%X", msr, cs.request_privilege_level);
         inject_guest_event(general_protection, DEFAULT_EC);
         *move_to_next = false;
         return true;
@@ -149,6 +158,7 @@ static bool handle_rdmsr(struct vcpu_ctx *vcpu, bool *move_to_next)
     /* Check to see if within valid MSR range. */
     if ((msr && (msr <= 0x1FFF)) || ((msr >= 0xC0000000) && (msr <= 0xC0001FFF))) {
         size_t msr_val = rdmsr(msr);
+        HANDLER_PRINT("RDMSR 0x%lX - 0x%lX", msr, msr_val);
         vcpu->guest_context.rdx = msr_val >> 32;
         vcpu->guest_context.rax = (uint32_t)msr_val;
         *move_to_next = true;
@@ -156,6 +166,7 @@ static bool handle_rdmsr(struct vcpu_ctx *vcpu, bool *move_to_next)
     }
 
     /* Invalid MSR which is out of range. */
+    HANDLER_PRINT("RDMSR 0x%lX out of range", msr);
     inject_guest_event(general_protection, DEFAULT_EC);
     *move_to_next = false;
     return true;
@@ -171,6 +182,7 @@ static bool handle_wrmsr(struct vcpu_ctx *vcpu, bool *move_to_next)
     segment_selector cs;
     cs.flags = __vmread(VMCS_GUEST_CS_SEL);
     if (cs.request_privilege_level != 0) {
+        HANDLER_PRINT("WRMSR 0x%lX 0x%lX wrong RPL 0x%X", msr_id, msr_val, cs.request_privilege_level);
         inject_guest_event(general_protection, DEFAULT_EC);
         *move_to_next = false;
         return true;
@@ -178,12 +190,14 @@ static bool handle_wrmsr(struct vcpu_ctx *vcpu, bool *move_to_next)
 
     /* Check to see if within valid MSR range. */
     if ((msr_id && (msr_id <= 0x1FFF)) || ((msr_id >= 0xC0000000) && (msr_id <= 0xC0001FFF))) {
+        HANDLER_PRINT("WRMSR 0x%lX 0x%lX", msr_id, msr_val);
         wrmsr(msr_id, msr_val);
         *move_to_next = true;
         return true;
     }
 
     /* Invalid MSR which is out of range. */
+    HANDLER_PRINT("WRMSR 0x%lX 0x%lX out of range", msr_id, msr_val);
     inject_guest_event(general_protection, DEFAULT_EC);
     *move_to_next = false;
     return true;
@@ -212,7 +226,6 @@ static void handle_exit_reason(struct vcpu_ctx *vcpu)
            "Exit reason 0x%lX rip 0x%lX not declared in handler table",
            reason, vcpu->guest_context.rip);
 
-    HANDLER_PRINT("reason: 0x%lX rip: 0x%lX", reason, vcpu->guest_context.rip);
     bool move_to_next_instr = false;
     bool success = EXIT_HANDLERS[reason](vcpu, &move_to_next_instr);
 
