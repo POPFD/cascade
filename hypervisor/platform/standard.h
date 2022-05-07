@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "arch.h"
+#include "intrin.h"
 
 /* Size definitions */
 #define GiB(x) ((size_t)(x) << 30)
@@ -37,8 +38,10 @@ static inline void print_format(char *file, const char *func, int line, const CH
 {
     va_list marker;
 
+    uint64_t tsc = rdmsr(0x00000010);
+
     va_start(marker, format);
-    APrint((const CHAR8 *)"%a %a (L%04d) - ", file, func, line);
+    APrint((const CHAR8 *)"[0x%lX] %a %a (L%04d) - ", tsc, file, func, line);
     VPrint((const CHAR16 *)format, marker);
     va_end(marker);
 }

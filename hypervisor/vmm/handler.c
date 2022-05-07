@@ -245,7 +245,7 @@ __attribute__((ms_abi)) void handler_guest_to_host(struct vcpu_context *guest_ct
 
     /* Set what the guest RIP and RSP were. */
     guest_ctx->rsp = __vmread(VMCS_GUEST_RSP);
-    guest_ctx->rip = __vmread(VMCS_GUEST_RIP);   
+    guest_ctx->rip = __vmread(VMCS_GUEST_RIP);
 
     /*
      * Find the vcpu_ctx structure by backtracing from the guest_ctx which we can
