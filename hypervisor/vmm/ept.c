@@ -24,7 +24,11 @@ struct ept_ctx {
     /* Describes 512 contiguous 512GiB memory regions. */
     __attribute__((aligned(PAGE_SIZE))) epml4e pml4[ENTRIES_PER_TABLE];
     /* Describes exactly 512 contiguous 1GiB memory regions with a singular PML4 region. */
-    __attribute__((aligned(PAGE_SIZE))) ept_pdpte_1gb pml3[ENTRIES_PER_TABLE];
+    __attribute__((aligned(PAGE_SIZE))) ept_pdpte pml3[ENTRIES_PER_TABLE];
+    /* For each 1GB PML3 entry, create 512 2MB regions.
+     * We are using 2MB pages as the smallest paging size in the map so that we do not need
+     * to allocate individual 4096 PML1 paging structures. */
+    __attribute__((aligned(PAGE_SIZE))) ept_pde_2mb pml2[ENTRIES_PER_TABLE][ENTRIES_PER_TABLE];
 
     /* The EPT pointer for this context. */
     eptp ept_ptr;
@@ -77,7 +81,7 @@ static uint32_t adjust_memory_type(struct ept_ctx *ctx, uintptr_t addr, uint32_t
             continue;
 
         /* Check to see if boundary falls anywhere within range. */
-        if (((addr + (GiB(1) - 1)) >= ctx->mtrr[i].phys_base_min) &&
+        if (((addr + (MiB(2) - 1)) >= ctx->mtrr[i].phys_base_min) &&
             (addr <= ctx->mtrr[i].phys_base_max)) {
             
             return ctx->mtrr[i].type;
@@ -119,22 +123,30 @@ struct ept_ctx *ept_init(void)
 
     /* Configure the lower level PML3 table,
      * each entry indicates 1GiB of physical memory,
-     * therefore the first 512GiB is identity mapped.
-     * 
-     * Ensure writeback memory is utilised, unless it falls
-     * within one of the MTRR regions. */
+     * therefore the first 512GiB is identity mapped. */
     for (int i = 0; i < ENTRIES_PER_TABLE; i++) {
         ctx->pml3[i].read_access = true;
         ctx->pml3[i].write_access = true;
         ctx->pml3[i].execute_access = true;
-        ctx->pml3[i].large_page = true;
-        ctx->pml3[i].page_frame_number = i;
 
-        uintptr_t base_addr = GiB(i);
-        ctx->pml3[i].memory_type = adjust_memory_type(ctx, base_addr, MEMORY_TYPE_WB);
+        uintptr_t phys_pml2 = mem_va_to_pa(this_cr3, &ctx->pml2[i][0]);
+        ctx->pml3[i].page_frame_number = phys_pml2 / PAGE_SIZE;
+    }
 
-        EPT_PRINT("PML3[%d] for physical addr 0x%lX with type 0x%X",
-                  i, base_addr, ctx->pml3[i].memory_type);
+    /* Loop every 1 GiB of RAM (PML3). */
+    for (int i = 0; i < ENTRIES_PER_TABLE; i++) {
+        /* Loop every 2 MiB within that GiB. */
+        for (int j = 0; j < ENTRIES_PER_TABLE; j++) {
+            ctx->pml2[i][j].read_access = true;
+            ctx->pml2[i][j].write_access = true;
+            ctx->pml2[i][j].execute_access = true;
+            ctx->pml2[i][j].large_page = true;
+            ctx->pml2[i][j].page_frame_number = (i * ENTRIES_PER_TABLE) + j;
+
+            uintptr_t phys_addr = ctx->pml2[i][j].page_frame_number * MiB(2);
+            uint32_t mem_type = adjust_memory_type(ctx, phys_addr, MEMORY_TYPE_WB);
+            ctx->pml2[i][j].memory_type = mem_type;
+        }
     }
 
     return ctx;

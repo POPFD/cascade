@@ -59,7 +59,6 @@ static void probe_capabilities()
     ept_vpid.flags = rdmsr(IA32_VMX_EPT_VPID_CAP);
     die_on(!ept_vpid.page_walk_length_4, "EPT PML4 not supported.");
     die_on(!ept_vpid.memory_type_write_back, "EPT memory type WB not supported.");
-    die_on(!ept_vpid.pdpte_1gb_pages, "EPT 1GB pages not supported.");
     die_on(!ept_vpid.pde_2mb_pages, "EPT 2MB pages not supported.");
 
     VMM_PRINT("CPU seems to provide all capabilities needed.");
