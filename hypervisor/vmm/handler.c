@@ -93,40 +93,41 @@ static bool handle_cpuid(struct vcpu_ctx *vcpu, bool *move_to_next)
     static const size_t CPUID_VI_BIT_HYPERVISOR_PRESENT = 0x80000000;
 
     /* Read the CPUID into the leafs array. */
-    uint64_t target = vcpu->guest_context.rax;
-    uint32_t leafs[4];
-    __get_cpuid(target, &leafs[0], &leafs[1], &leafs[2], &leafs[3]);
+    uint64_t leaf = vcpu->guest_context.rax;
+    uint64_t sub_leaf = vcpu->guest_context.rcx;
+    int out_regs[4] = { 0 };
+    __cpuidex(out_regs, leaf, sub_leaf);
 
     /* Override certain target leafs. */
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmultichar"
-    switch (target) {
+    switch (leaf) {
     case CPUID_VERSION_INFO:
-        leafs[2] &= ~(uint64_t)CPUID_VI_BIT_HYPERVISOR_PRESENT;
+        out_regs[2] &= ~(uint64_t)CPUID_VI_BIT_HYPERVISOR_PRESENT;
         break;
     case HYPERV_CPUID_VENDOR_AND_MAX_FUNCTIONS:
-        leafs[0] = HYPERV_CPUID_INTERFACE;
-        leafs[1] = 'csac';
-        leafs[2] = '\0eda';
-        leafs[3] = '\0\0\0\0';
+        out_regs[0] = HYPERV_CPUID_INTERFACE;
+        out_regs[1] = 'csac';
+        out_regs[2] = '\0eda';
+        out_regs[3] = '\0\0\0\0';
         break;
     case HYPERV_CPUID_INTERFACE:
-        leafs[0] = 'csac';
-        leafs[1] = 0;
-        leafs[2] = 0;
-        leafs[3] = 0;
+        out_regs[0] = 'csac';
+        out_regs[1] = 0;
+        out_regs[2] = 0;
+        out_regs[3] = 0;
         break;
     }
 #pragma GCC diagnostic pop
 
-    HANDLER_PRINT("CPUID leaf 0x%lX - 0x%lX 0x%lX 0x%lX 0x%lX",
-                  target, leafs[0], leafs[1], leafs[2], leafs[3]);
+    HANDLER_PRINT("CPUID leaf 0x%lX sub_leaf 0x%lX - 0x%lX 0x%lX 0x%lX 0x%lX",
+                  leaf, sub_leaf, out_regs[0], out_regs[1], out_regs[2], out_regs[3]);
 
     /* Store these leafs back into the guest context and move to next. */
-    vcpu->guest_context.rax = leafs[0];
-    vcpu->guest_context.rbx = leafs[1];
-    vcpu->guest_context.rcx = leafs[2];
-    vcpu->guest_context.rdx = leafs[3];
+    vcpu->guest_context.rax = out_regs[0];
+    vcpu->guest_context.rbx = out_regs[1];
+    vcpu->guest_context.rcx = out_regs[2];
+    vcpu->guest_context.rdx = out_regs[3];
     *move_to_next = true;
     return true;
 }
