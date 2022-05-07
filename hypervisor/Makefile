@@ -12,6 +12,7 @@ OC := objcopy
 
 CFLAGS := -fno-stack-protector	\
 	-fshort-wchar				\
+	-mno-sse					\
 	-mno-red-zone				\
 	-Wall						\
 	-Wextra						\
@@ -20,8 +21,8 @@ CFLAGS := -fno-stack-protector	\
 	-I/usr/include/efi/x86_64	\
 	-I../ia32-doc/out/			\
 	-I.							\
-	-DEFI_FUNCTION_WRAPPER
-
+	-DEFI_FUNCTION_WRAPPER		\
+	-DPRINTF_DISABLE_SUPPORT_FLOAT
 ASMFLAGS := -f elf64 \
 	-Werror
 
