@@ -17,6 +17,7 @@ global __sldt
 global __str
 global __ltr
 global __xsetbv
+global __invd
 global __vmxon
 global __vmclear
 global __vmptrld
