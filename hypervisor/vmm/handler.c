@@ -85,15 +85,42 @@ static void handle_cached_interrupts(struct vcpu_ctx *vcpu)
 
 static bool handle_cpuid(struct vcpu_ctx *vcpu, bool *move_to_next)
 {
+    /* Override leafs. */
+    #define HYPERV_CPUID_VENDOR_AND_MAX_FUNCTIONS 0x40000000
+    #define HYPERV_CPUID_INTERFACE 0x40000001
+
+    /* Bitmasks in certain leafs. */
+    static const size_t CPUID_VI_BIT_HYPERVISOR_PRESENT = 0x80000000;
+
     /* Read the CPUID into the leafs array. */
     uint64_t target = vcpu->guest_context.rax;
     uint32_t leafs[4];
-    __get_cpuid(vcpu->guest_context.rax, &leafs[0], &leafs[1], &leafs[2], &leafs[3]);
+    __get_cpuid(target, &leafs[0], &leafs[1], &leafs[2], &leafs[3]);
+
+    /* Override certain target leafs. */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmultichar"
+    switch (target) {
+    case CPUID_VERSION_INFO:
+        leafs[2] |= CPUID_VI_BIT_HYPERVISOR_PRESENT;
+        break;
+    case HYPERV_CPUID_VENDOR_AND_MAX_FUNCTIONS:
+        leafs[0] = HYPERV_CPUID_INTERFACE;
+        leafs[1] = 'csac';
+        leafs[2] = '\0eda';
+        leafs[3] = '\0\0\0\0';
+        break;
+    case HYPERV_CPUID_INTERFACE:
+        leafs[0] = 'csac';
+        leafs[1] = 0;
+        leafs[2] = 0;
+        leafs[3] = 0;
+        break;
+    }
+#pragma GCC diagnostic pop
 
     HANDLER_PRINT("CPUID leaf 0x%lX - 0x%lX 0x%lX 0x%lX 0x%lX",
                   target, leafs[0], leafs[1], leafs[2], leafs[3]);
-
-    /* TODO: Extra handling here? Maybe we want to hide HV, or add HV vendor leafs */
 
     /* Store these leafs back into the guest context and move to next. */
     vcpu->guest_context.rax = leafs[0];
