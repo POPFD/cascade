@@ -4,7 +4,7 @@
 #include "memory/mem.h"
 #include "ept.h"
 
-//#define DEBUG_EPT
+#define DEBUG_EPT
 #ifdef DEBUG_EPT
     #define EPT_PRINT(...) debug_print(__VA_ARGS__)
 #else
@@ -148,6 +148,9 @@ struct ept_ctx *ept_init(void)
             ctx->pml2[i][j].memory_type = mem_type;
         }
     }
+
+    /* Change to RO just to double check nothing is overwriting to our EPT context. */
+    vmem_change_perms(ctx, sizeof(struct ept_ctx), 0);
 
     return ctx;
 }

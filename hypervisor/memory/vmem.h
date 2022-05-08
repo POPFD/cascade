@@ -10,5 +10,6 @@
 
 void vmem_init(cr3 *original_cr3, cr3 *new_cr3);
 void *vmem_alloc(size_t size, unsigned int flags);
+void vmem_change_perms(void *addr, size_t size, unsigned int flags);
 
 #endif /* VMEM_H */

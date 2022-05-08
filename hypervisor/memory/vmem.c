@@ -20,7 +20,7 @@
  * This allows for an easy seperation and determination of identity mapped vs allocated
  * memory.
  */
-//#define DEBUG_VMEM
+#define DEBUG_VMEM
 #ifdef DEBUG_VMEM
     #define VMEM_PRINT(...) debug_print(__VA_ARGS__)
 #else
@@ -145,6 +145,38 @@ static void create_table_entries(uintptr_t addr, bool write, bool exec)
 #endif
 }
 
+static void modify_entry_perms(uintptr_t addr, bool write, bool exec)
+{
+    VMEM_PRINT("Modifying page table entries for address %lX write %d exec %d", addr, write, exec);
+
+    size_t pml4_idx = ADDRMASK_PML4_INDEX(addr);
+    size_t pdpte_idx = ADDRMASK_PDPTE_INDEX(addr);
+    size_t pde_idx = ADDRMASK_PDE_INDEX(addr);
+    size_t pte_idx = ADDRMASK_PTE_INDEX(addr);
+    VMEM_PRINT("PML4[%d] PDPTE[%d] PDE[%d] PTE[%d]", pml4_idx, pdpte_idx, pde_idx, pte_idx);
+
+    pml4e_64 *pml4e = &m_ctx->pml4[pml4_idx];
+    die_on(!pml4e->present, "PML4E for addr %lX not present", addr);
+
+    pdpte_64 *pdpt = (pdpte_64 *)((uintptr_t)pml4e->page_frame_number * PAGE_SIZE);
+    pdpte_64 *pdpte = &pdpt[pdpte_idx];
+    die_on(!pdpte->present, "PDPTE for addr %lX not present", addr);
+
+    pde_64 *pd = (pde_64 *)((uintptr_t)pdpte->page_frame_number * PAGE_SIZE);
+    pde_64 *pde = &pd[pde_idx];
+
+    die_on(!pde->present, "PDE for addr %lX not present", addr);
+
+    pte_64 *pt = (pte_64 *)((uintptr_t)pde->page_frame_number * PAGE_SIZE);
+    pte_64 *pte = &pt[pte_idx];
+    die_on(!pte->present, "PTE for addr %lX not present", addr);
+    pte->write = write;
+    pte->execute_disable = !exec;
+
+    /* Invalidate the TLB for address. */
+    __invlpg(&addr);
+}
+
 void vmem_init(cr3 *original_cr3, cr3 *new_cr3)
 {
     /* Store the original CR3 value before initialising the virtual-memory manager. */
@@ -212,6 +244,24 @@ void *vmem_alloc(size_t size, unsigned int flags)
            "freed memory ranges.");
 
     return (void *)start_addr;
+}
+
+void vmem_change_perms(void *addr, size_t size, unsigned int flags)
+{
+    /* Determine info from flags. */
+    bool write = (flags & MEM_WRITE) != 0;
+    bool exec = (flags & MEM_EXECUTE) != 0;
+
+    uintptr_t start_addr = (uintptr_t)addr;
+    uintptr_t end_addr = start_addr + size;
+
+    /* Iterate each page and change permissions. */
+    for (uintptr_t curr_addr = start_addr;
+         curr_addr < end_addr;
+         curr_addr += PAGE_SIZE) {
+
+        modify_entry_perms(curr_addr, write, exec);
+    }
 }
 
 void vmem_free(void *addr, size_t size)
