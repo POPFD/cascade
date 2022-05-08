@@ -1,7 +1,7 @@
 #include "platform/standard.h"
 #include "platform/efi_plat.h"
 #include "platform/intrin.h"
-#include "memory/vmem.h"
+#include "memory/pmem.h"
 #include "memory/mem.h"
 #include "vmm.h"
 #include "ept.h"
@@ -447,12 +447,8 @@ static void setup_vmcs_guest(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
     __vmwrite(VMCS_CTRL_CR0_READ_SHADOW, vcpu->guest_ctrl_regs.reg_cr0.flags);
     __vmwrite(VMCS_GUEST_CR0, vcpu->guest_ctrl_regs.reg_cr0.flags);
 
-    /*
-     * We have to use the page table created in our host environment for now
-     * the guest will overwrite this when actually loading an OS though so we're golden.
-     */
     __vmwrite(VMCS_CTRL_CR3_TARGET_COUNT, 0);
-    __vmwrite(VMCS_GUEST_CR3, vcpu->guest_ctrl_regs.reg_cr3.flags);
+    __vmwrite(VMCS_GUEST_CR3, vmm->init.guest_cr3.flags);
 
     /* Set the guest/host mask and a shadow, this is used to hide
      * the fact that VMXE bit in CR4 is set.
@@ -583,8 +579,11 @@ static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
     efi_plat_processor_index(&proc_idx);
     die_on(proc_idx >= VCPU_MAX, "vCPU index greater than supported by VMM.");
 
-    /* Create the vCPU context structure. */
-    struct vcpu_ctx *vcpu = vmem_alloc(sizeof(struct vcpu_ctx), MEM_WRITE);
+    /* Create the vCPU context structure.
+     * THIS MUST BE ALLOCATED AS CONTIGUOUS PHYSICAL MEMORY AS WHEN EXITING
+     * DURING THE HOST TO GUEST HYPERJACKING SHIM WE DON'T WANT NON-CONTIGUOUS
+     * PMEM WHICH WOULD CAUSE A POTENTIAL OVERWRITE OF WRONG PHYSICAL MEMORY. */
+    struct vcpu_ctx *vcpu = (struct vcpu_ctx *)pmem_alloc_contiguous(sizeof(struct vcpu_ctx));
     die_on(!vcpu, "Unable to allocate vCPU %ld context.", proc_idx);
 
     /* Set the pointer so we can retrive VMM context from the vCPU context. */

@@ -20,7 +20,7 @@
  * This allows for an easy seperation and determination of identity mapped vs allocated
  * memory.
  */
-#define DEBUG_VMEM
+//#define DEBUG_VMEM
 #ifdef DEBUG_VMEM
     #define VMEM_PRINT(...) debug_print(__VA_ARGS__)
 #else
