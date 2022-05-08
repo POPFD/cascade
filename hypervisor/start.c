@@ -8,6 +8,16 @@
 #include "interrupt/idt.h"
 #include "vmm/vmm.h"
 
+static const EFI_GUID gEfiEventExitBootServicesGuid  = { 0x27ABF055, 0xB1B8, 0x4C26, { 0x80, 0x48, 0x74, 0x8F, 0x37, 0xBA, 0xA2, 0xDF }};
+static EFI_EVENT gEfiExitBootServicesEvent = NULL;
+
+void EFIAPI cbk_exit_boot_services(EFI_EVENT evt, void *ctx)
+{
+  (void)evt;
+  (void)ctx;
+  debug_print("ExitBootServices!!!");
+}
+
 EFI_STATUS
 EFIAPI
 efi_main (EFI_HANDLE image_handle, EFI_SYSTEM_TABLE *system_table)
@@ -18,6 +28,10 @@ efi_main (EFI_HANDLE image_handle, EFI_SYSTEM_TABLE *system_table)
   uefi_call_wrapper(system_table->BootServices->HandleProtocol, 3,
                     image_handle, &gEfiLoadedImageProtocolGuid, &loaded_image);
   debug_print("EFI image loaded at: 0x%lX", loaded_image->ImageBase);
+
+  uefi_call_wrapper(system_table->BootServices->CreateEventEx, 6,
+                    EVT_NOTIFY_SIGNAL, TPL_NOTIFY, cbk_exit_boot_services, NULL,
+                    &gEfiEventExitBootServicesGuid, &gEfiExitBootServicesEvent);
 
 //#define DEBUG_IDA
 #ifdef DEBUG_IDA
