@@ -18,6 +18,7 @@ global __str
 global __ltr
 global __xsetbv
 global __invd
+global __invlpg
 global __vmxon
 global __vmclear
 global __vmptrld
@@ -102,6 +103,10 @@ __xsetbv:
 
 __invd:
     invd
+    ret
+
+__invlpg:
+    invlpg [rcx]
     ret
 
 __vmxon:

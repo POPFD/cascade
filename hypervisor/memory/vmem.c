@@ -86,7 +86,7 @@ static void create_table_entries(uintptr_t addr, bool write, bool exec)
         die_on(!pml4e->page_frame_number, "Could not allocate PML4E for addr %lX", addr);
         pml4e->present = true;
     }
-    VMEM_PRINT("--- PDPT base PFN[ADDR] %lX[%lX]",
+    VMEM_PRINT("--- PML4E base PFN[ADDR] %lX[%lX]",
                 pml4e->page_frame_number,
                 pml4e->page_frame_number * PAGE_SIZE);
 
@@ -99,7 +99,7 @@ static void create_table_entries(uintptr_t addr, bool write, bool exec)
         die_on(!pdpte->page_frame_number, "Could not allocate PDPTE for addr %lX", addr);
         pdpte->present = true;
     }
-    VMEM_PRINT("--- PD base PFN[ADDR] %lX[%lX]",
+    VMEM_PRINT("--- PDPTE base PFN[ADDR] %lX[%lX]",
                 pdpte->page_frame_number,
                 pdpte->page_frame_number * PAGE_SIZE);
 
@@ -112,7 +112,7 @@ static void create_table_entries(uintptr_t addr, bool write, bool exec)
         die_on(!pde->page_frame_number, "Could not allocate PDE for addr %lX", addr);
         pde->present = true;
     }
-    VMEM_PRINT("--- PT base PFN[ADDR] %lX[%lX]",
+    VMEM_PRINT("--- PDE base PFN[ADDR] %lX[%lX]",
                 pde->page_frame_number,
                 pde->page_frame_number * PAGE_SIZE);
 
@@ -128,6 +128,9 @@ static void create_table_entries(uintptr_t addr, bool write, bool exec)
     VMEM_PRINT("--- Allocated pmem PFN[ADDR] %lX[%lX]",
                 pte->page_frame_number,
                 pte->page_frame_number * PAGE_SIZE);
+
+    /* Invalidate the TLB for address. */
+    __invlpg(&addr);
 
 #ifdef DEBUG_VMEM
     /* Some debug code that ensures that the created PA matches if we
@@ -181,6 +184,7 @@ void *vmem_alloc(size_t size, unsigned int flags)
      * free start address create a table entry.
      */
 
+    VMEM_PRINT("Unaligned size: %ld", size);
     /* Align size to next largest page. */
     size = (size & PAGE_MASK) ? ((size + PAGE_SIZE) & ~PAGE_MASK) : size;
     VMEM_PRINT("Attempting allocation of size: %ld", size);
@@ -191,6 +195,7 @@ void *vmem_alloc(size_t size, unsigned int flags)
 
     uintptr_t start_addr = m_ctx->next_free_addr;
     uintptr_t end_addr = start_addr + size;
+    VMEM_PRINT("Start addr 0x%lX end addr 0x%lX diff 0x%lX", start_addr, end_addr, end_addr - start_addr);
 
     for (uintptr_t curr_addr = start_addr;
          curr_addr < end_addr;
