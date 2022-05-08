@@ -79,6 +79,7 @@ static void create_table_entries(uintptr_t addr, bool write, bool exec)
     VMEM_PRINT("PML4[%d] PDPTE[%d] PDE[%d] PTE[%d]", pml4_idx, pdpte_idx, pde_idx, pte_idx);
 
     pml4e_64 *pml4e = &m_ctx->pml4[pml4_idx];
+    VMEM_PRINT("--- PML4E PFN[ADDR] %lX[%lX]", (uintptr_t)pml4e / PAGE_SIZE, pml4e);
 
     if (!pml4e->present) {
         pml4e->write = true;
@@ -86,12 +87,10 @@ static void create_table_entries(uintptr_t addr, bool write, bool exec)
         die_on(!pml4e->page_frame_number, "Could not allocate PML4E for addr %lX", addr);
         pml4e->present = true;
     }
-    VMEM_PRINT("--- PML4E base PFN[ADDR] %lX[%lX]",
-                pml4e->page_frame_number,
-                pml4e->page_frame_number * PAGE_SIZE);
 
     pdpte_64 *pdpt = (pdpte_64 *)((uintptr_t)pml4e->page_frame_number * PAGE_SIZE);
     pdpte_64 *pdpte = &pdpt[pdpte_idx];
+    VMEM_PRINT("--- PDPTE PFN[ADDR] %lX[%lX]", (uintptr_t)pdpte / PAGE_SIZE, pdpte);
 
     if (!pdpte->present) {
         pdpte->write = true;
@@ -99,12 +98,10 @@ static void create_table_entries(uintptr_t addr, bool write, bool exec)
         die_on(!pdpte->page_frame_number, "Could not allocate PDPTE for addr %lX", addr);
         pdpte->present = true;
     }
-    VMEM_PRINT("--- PDPTE base PFN[ADDR] %lX[%lX]",
-                pdpte->page_frame_number,
-                pdpte->page_frame_number * PAGE_SIZE);
 
     pde_64 *pd = (pde_64 *)((uintptr_t)pdpte->page_frame_number * PAGE_SIZE);
     pde_64 *pde = &pd[pde_idx];
+    VMEM_PRINT("--- PDE PFN[ADDR] %lX[%lX]", (uintptr_t)pde / PAGE_SIZE, pde);
 
     if (!pde->present) {
         pde->write = true;
@@ -112,12 +109,10 @@ static void create_table_entries(uintptr_t addr, bool write, bool exec)
         die_on(!pde->page_frame_number, "Could not allocate PDE for addr %lX", addr);
         pde->present = true;
     }
-    VMEM_PRINT("--- PDE base PFN[ADDR] %lX[%lX]",
-                pde->page_frame_number,
-                pde->page_frame_number * PAGE_SIZE);
 
     pte_64 *pt = (pte_64 *)((uintptr_t)pde->page_frame_number * PAGE_SIZE);
     pte_64 *pte = &pt[pte_idx];
+    VMEM_PRINT("--- PTE PFN[ADDR] %lX[%lX]", (uintptr_t)pte / PAGE_SIZE, pte);
 
     die_on(pte->present, "PTE is already present for addr %lX", addr);
     pte->write = write;
@@ -125,9 +120,8 @@ static void create_table_entries(uintptr_t addr, bool write, bool exec)
     pte->page_frame_number = pmem_alloc_page() / PAGE_SIZE;
     die_on(!pte->page_frame_number, "Could not allocate PTE for addr %lX", addr);
     pte->present = true;
-    VMEM_PRINT("--- Allocated pmem PFN[ADDR] %lX[%lX]",
-                pte->page_frame_number,
-                pte->page_frame_number * PAGE_SIZE);
+    VMEM_PRINT("--- Allocated page memory PFN[ADDR] %lX[%lX]",
+               pte->page_frame_number, pte->page_frame_number * PAGE_SIZE);
 
     /* Invalidate the TLB for address. */
     __invlpg(&addr);
