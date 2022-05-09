@@ -1,6 +1,7 @@
 #include "platform/standard.h"
 #include "platform/efi_plat.h"
 #include "platform/intrin.h"
+#include "platform/util.h"
 #include "memory/pmem.h"
 #include "memory/mem.h"
 #include "vmm.h"
@@ -500,7 +501,7 @@ static void setup_vmcs_guest(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
               guest_rip, guest_rsp, phys_vcpu_ctx);
 }
 
-static void setup_vmcs_generic(struct vmm_ctx *vmm)
+static void setup_vmcs_generic(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
 {
     /* Set up the link pointer. */
     __vmwrite(VMCS_GUEST_VMCS_LINK_PTR, ~0ull);
@@ -511,10 +512,14 @@ static void setup_vmcs_generic(struct vmm_ctx *vmm)
 
     /* Load the MSR bitmap with the bitmap which will be used to
      * indicate which MSR reads/writes to trap on.
-     * 0 bits indicate trap, if set then auto route. */
+     * Setting all bits indicates trap on read & write. */
     cr3 this_cr3;
     this_cr3.flags = __readcr3();
-    __vmwrite(VMCS_CTRL_MSR_BITMAP, mem_va_to_pa(this_cr3, vmm->msr_trap_bitmap));
+    memset(vcpu->msr_trap_bitmap, 0xFF, PAGE_SIZE);
+    __vmwrite(VMCS_CTRL_MSR_BITMAP, mem_va_to_pa(this_cr3, vcpu->msr_trap_bitmap));
+
+    /* MSRs to ignore trapping on. */
+    vmm_msr_trap_enable(vcpu->msr_trap_bitmap, IA32_TIME_STAMP_COUNTER, false);
 
     /* We don't explicitly enable any pin-based options ourselves, but there may
      * be some required by the procesor, the encode the MSR to include these. */
@@ -607,7 +612,7 @@ static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
         enter_root_mode(vcpu);
 
         /* Set up VMCS */
-        setup_vmcs_generic(vmm);
+        setup_vmcs_generic(vmm, vcpu);
         setup_vmcs_host(vmm, vcpu);
         setup_vmcs_guest(vmm, vcpu);
 

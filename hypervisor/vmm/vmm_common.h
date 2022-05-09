@@ -2,6 +2,7 @@
 #define VMM_COMMON_H
 
 #include "platform/intrin.h"
+#include "platform/util.h"
 #include "vmm_reg.h"
 #include "ia32_compact.h"
 
@@ -37,8 +38,6 @@ struct cached_interrupt {
 
 /* Holds the global context for the VMM. */
 struct vmm_ctx {
-    __attribute__ ((aligned (PAGE_SIZE))) uint8_t msr_trap_bitmap[PAGE_SIZE];
-
     struct vmm_init_params init;
     struct ept_ctx *ept;
 };
@@ -48,6 +47,7 @@ struct vcpu_ctx {
     __attribute__ ((aligned (PAGE_SIZE))) uint8_t host_stack[HOST_STACK_SIZE];
     __attribute__ ((aligned (PAGE_SIZE))) vmxon host_vmxon;
     __attribute__ ((aligned (PAGE_SIZE))) vmcs guest_vmcs;
+    __attribute__ ((aligned (PAGE_SIZE))) uint8_t msr_trap_bitmap[PAGE_SIZE];
 
     struct control_registers guest_ctrl_regs;
     struct vcpu_context guest_context;
@@ -56,6 +56,7 @@ struct vcpu_ctx {
 
     struct vmm_ctx *vmm;
     bool running_as_guest;
+    size_t last_ignored_msr;
 };
 
 static inline struct vcpu_ctx *vmm_get_vcpu_ctx(void)
@@ -77,6 +78,40 @@ static inline void vmm_set_cached_interrupt(exception_vector vector, exception_e
     vcpu->cached_int.vector = vector;
     vcpu->cached_int.code = code;
     vcpu->cached_int.pending = true;
+}
+
+static inline void vmm_msr_trap_enable(uint8_t *bitmap, size_t msr, bool trap)
+{
+    static const size_t LOW_START = 0x0;
+    static const size_t LOW_END = 0x1fff;
+    static const size_t HIGH_START = 0xc0000000;
+    static const size_t HIGH_END = 0xc0001fff;
+
+    uint8_t *read_low = &bitmap[0];
+    uint8_t *read_high = &bitmap[1024];
+    uint8_t *write_low = &bitmap[2048];
+    uint8_t *write_high = &bitmap[3072];
+
+    if ((msr >= LOW_START) && (msr <= LOW_END)) {
+        if (trap) {
+            bitmap_set_bit(read_low, msr);
+            bitmap_set_bit(write_low, msr);
+        } else {
+            bitmap_clear_bit(read_low, msr);
+            bitmap_clear_bit(write_low, msr);
+        }
+    } else if ((msr >= HIGH_START) && (msr <= HIGH_END)) {
+        size_t offset = msr - HIGH_START;
+        if (trap) {
+            bitmap_set_bit(read_high, offset);
+            bitmap_set_bit(write_high, offset);
+        } else {
+            bitmap_clear_bit(read_high, offset);
+            bitmap_clear_bit(write_high, offset);
+        }
+    } else {
+        die_on(false, "MSR 0x%lX out of valid range", msr);
+    }
 }
 
 #endif /* VMM_COMMON_H */
