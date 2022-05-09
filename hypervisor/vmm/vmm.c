@@ -512,14 +512,18 @@ static void setup_vmcs_generic(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
 
     /* Load the MSR bitmap with the bitmap which will be used to
      * indicate which MSR reads/writes to trap on.
-     * Setting all bits indicates trap on read & write. */
+     * Setting all bits indicates trap on read & write.
+     *
+     * NOTE: MSR trapping for EVERY read/write is very intensive
+     * trying to boot an actual OS with this is terrible. Instead
+     * in the future maybe we can use this to target MSR read/write
+     * when a specific CR3 is loaded/stored so we can do targetted
+     * reading of drivers etc. */
     cr3 this_cr3;
     this_cr3.flags = __readcr3();
-    memset(vcpu->msr_trap_bitmap, 0xFF, PAGE_SIZE);
+    //memset(vcpu->msr_trap_bitmap, 0xFF, PAGE_SIZE);
+    memset(vcpu->msr_trap_bitmap, 0x00, PAGE_SIZE);
     __vmwrite(VMCS_CTRL_MSR_BITMAP, mem_va_to_pa(this_cr3, vcpu->msr_trap_bitmap));
-
-    /* MSRs to ignore trapping on. */
-    vmm_msr_trap_enable(vcpu->msr_trap_bitmap, IA32_TIME_STAMP_COUNTER, false);
 
     /* We don't explicitly enable any pin-based options ourselves, but there may
      * be some required by the procesor, the encode the MSR to include these. */
