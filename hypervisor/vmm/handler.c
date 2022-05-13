@@ -4,6 +4,7 @@
 #include "memory/mem.h"
 #include "interrupt/idt.h"
 #include "vmm_common.h"
+#include "vmcall.h"
 #include "ia32_compact.h"
 
 static void handle_cached_interrupts(struct vcpu_ctx *vcpu)
@@ -232,7 +233,8 @@ static void handle_exit_reason(struct vcpu_ctx *vcpu)
         [VMX_EXIT_REASON_INVD] = handle_invd,
         [VMX_EXIT_REASON_RDMSR] = handle_rdmsr,
         [VMX_EXIT_REASON_WRMSR] = handle_wrmsr,
-        [VMX_EXIT_REASON_MTF] = handle_monitor_trap_flag
+        [VMX_EXIT_REASON_MTF] = handle_monitor_trap_flag,
+        [VMX_EXIT_REASON_VMCALL] = vmcall_handle
     };
 
     /* Determine the exit reason and then call the appropriate exit handler. */
