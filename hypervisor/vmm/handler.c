@@ -12,60 +12,6 @@
     #define HANDLER_PRINT(...)
 #endif
 
-static bool event_has_error_code(exception_vector vector)
-{
-    switch (vector) {
-        case double_fault:
-        case invalid_tss:
-        case segment_not_present:
-        case stack_segment_fault:
-        case general_protection:
-        case page_fault:
-        case alignment_check:
-            return true;
-        default:
-            return false;
-    }
-}
-
-static void inject_guest_event(exception_vector vector, exception_error_code code)
-{
-    vmentry_interrupt_info info = { 0 };
-    interruption_type type;
-
-    /* Determine if the vector has an error code associated with it. */
-    info.deliver_error_code = event_has_error_code(vector);
-
-    /* Determine the interrupt type. */
-    switch (vector) {
-        case breakpoint:
-        case overflow:
-            type = software_exception;
-            break;
-        case debug:
-            type = privileged_software_exception;
-            break;
-        default:
-            type = hardware_exception;
-            break;
-    }
-
-    /* Override if vector was greater than 0x20 */
-    if (vector >= 0x20) {
-        type = external_interrupt;
-    }
-
-    info.vector = vector;
-    info.interruption_type = type;
-    info.valid = true;
-    __vmwrite(VMCS_CTRL_ENTRY_INTERRUPTION_INFO, info.flags);
-
-    if (info.deliver_error_code)
-        __vmwrite(VMCS_CTRL_ENTRY_EXCEPTION_ERRCODE, code.flags);
-
-    HANDLER_PRINT("Injected guest event 0x%lX type 0x%lX code 0x%lX", vector, type, code.flags);
-}
-
 static void handle_cached_interrupts(struct vcpu_ctx *vcpu)
 {
     /*
@@ -79,7 +25,7 @@ static void handle_cached_interrupts(struct vcpu_ctx *vcpu)
     if (vcpu->cached_int.pending) {
         HANDLER_PRINT("Forwarding vector 0x%lX error code 0x%lX",
                       vcpu->cached_int.vector, vcpu->cached_int.code);
-        inject_guest_event(vcpu->cached_int.vector, vcpu->cached_int.code);
+        vmm_inject_guest_event(vcpu->cached_int.vector, vcpu->cached_int.code);
         vcpu->cached_int.pending = false;
     }
 }
@@ -142,7 +88,7 @@ static bool handle_xsetbv(struct vcpu_ctx *vcpu, bool *move_to_next)
     guest_cr4.flags = __vmread(VMCS_GUEST_CR4);
     if (!guest_cr4.os_xsave) {
         HANDLER_PRINT("XSETBV when CR4.os_xsave not set");
-        inject_guest_event(invalid_opcode, DEFAULT_EC);
+        vmm_inject_guest_event(invalid_opcode, DEFAULT_EC);
         *move_to_next = false;
         return true;
     }
@@ -151,7 +97,7 @@ static bool handle_xsetbv(struct vcpu_ctx *vcpu, bool *move_to_next)
     uint32_t field = (uint32_t)vcpu->guest_context.rcx;
     if (field) {
         HANDLER_PRINT("XSETBV invalid XCR field 0x%X", field);
-        inject_guest_event(general_protection, DEFAULT_EC);
+        vmm_inject_guest_event(general_protection, DEFAULT_EC);
         *move_to_next = false;
         return true;
     }
@@ -220,7 +166,7 @@ static bool handle_rdmsr(struct vcpu_ctx *vcpu, bool *move_to_next)
     cs.flags = __vmread(VMCS_GUEST_CS_SEL);
     if (cs.request_privilege_level != 0) {
         HANDLER_PRINT("RDMSR 0x%lX wrong RPL 0x%X", msr, cs.request_privilege_level);
-        inject_guest_event(general_protection, DEFAULT_EC);
+        vmm_inject_guest_event(general_protection, DEFAULT_EC);
         *move_to_next = false;
         return true;
     }
@@ -240,7 +186,7 @@ static bool handle_rdmsr(struct vcpu_ctx *vcpu, bool *move_to_next)
 
     /* Invalid MSR which is out of range. */
     HANDLER_PRINT("RDMSR 0x%lX out of range", msr);
-    inject_guest_event(general_protection, DEFAULT_EC);
+    vmm_inject_guest_event(general_protection, DEFAULT_EC);
     *move_to_next = false;
     return true;
 }
@@ -256,7 +202,7 @@ static bool handle_wrmsr(struct vcpu_ctx *vcpu, bool *move_to_next)
     cs.flags = __vmread(VMCS_GUEST_CS_SEL);
     if (cs.request_privilege_level != 0) {
         HANDLER_PRINT("WRMSR 0x%lX 0x%lX wrong RPL 0x%X", msr_id, msr_val, cs.request_privilege_level);
-        inject_guest_event(general_protection, DEFAULT_EC);
+        vmm_inject_guest_event(general_protection, DEFAULT_EC);
         *move_to_next = false;
         return true;
     }
@@ -277,7 +223,7 @@ static bool handle_wrmsr(struct vcpu_ctx *vcpu, bool *move_to_next)
 
     /* Invalid MSR which is out of range. */
     HANDLER_PRINT("WRMSR 0x%lX 0x%lX out of range", msr_id, msr_val);
-    inject_guest_event(general_protection, DEFAULT_EC);
+    vmm_inject_guest_event(general_protection, DEFAULT_EC);
     *move_to_next = false;
     return true;
 }

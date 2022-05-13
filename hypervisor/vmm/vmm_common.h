@@ -114,4 +114,6 @@ static inline void vmm_msr_trap_enable(uint8_t *bitmap, size_t msr, bool trap)
     }
 }
 
+void vmm_inject_guest_event(exception_vector vector, exception_error_code code);
+
 #endif /* VMM_COMMON_H */

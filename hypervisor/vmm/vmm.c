@@ -633,6 +633,22 @@ static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
     }
 }
 
+static bool event_has_error_code(exception_vector vector)
+{
+    switch (vector) {
+        case double_fault:
+        case invalid_tss:
+        case segment_not_present:
+        case stack_segment_fault:
+        case general_protection:
+        case page_fault:
+        case alignment_check:
+            return true;
+        default:
+            return false;
+    }
+}
+
 void vmm_init(struct vmm_init_params *params)
 {
     /* Make sure the CPU supports all of the features required. */
@@ -667,4 +683,42 @@ __attribute__((noreturn)) void vmm_hyperjack_handler(struct vcpu_ctx *vcpu)
     vcpu->running_as_guest = true;
     __restore_context(&vcpu->guest_context);
     die_on(true, "Shouldn't be here context should have been restored.");
+}
+
+void vmm_inject_guest_event(exception_vector vector, exception_error_code code)
+{
+    vmentry_interrupt_info info = { 0 };
+    interruption_type type;
+
+    /* Determine if the vector has an error code associated with it. */
+    info.deliver_error_code = event_has_error_code(vector);
+
+    /* Determine the interrupt type. */
+    switch (vector) {
+        case breakpoint:
+        case overflow:
+            type = software_exception;
+            break;
+        case debug:
+            type = privileged_software_exception;
+            break;
+        default:
+            type = hardware_exception;
+            break;
+    }
+
+    /* Override if vector was greater than 0x20 */
+    if (vector >= 0x20) {
+        type = external_interrupt;
+    }
+
+    info.vector = vector;
+    info.interruption_type = type;
+    info.valid = true;
+    __vmwrite(VMCS_CTRL_ENTRY_INTERRUPTION_INFO, info.flags);
+
+    if (info.deliver_error_code)
+        __vmwrite(VMCS_CTRL_ENTRY_EXCEPTION_ERRCODE, code.flags);
+
+    VMM_PRINT("Injected guest event 0x%lX type 0x%lX code 0x%lX", vector, type, code.flags);
 }
