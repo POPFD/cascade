@@ -1,16 +1,10 @@
+#define DEBUG_MODULE
 #include "platform/standard.h"
 #include "platform/intrin.h"
 #include "memory/mem.h"
 #include "interrupt/idt.h"
 #include "vmm_common.h"
 #include "ia32_compact.h"
-
-#define DEBUG_HANDLER
-#ifdef DEBUG_HANDLER
-    #define HANDLER_PRINT(...) debug_print(__VA_ARGS__)
-#else
-    #define HANDLER_PRINT(...)
-#endif
 
 static void handle_cached_interrupts(struct vcpu_ctx *vcpu)
 {
@@ -23,7 +17,7 @@ static void handle_cached_interrupts(struct vcpu_ctx *vcpu)
      * interrupt.
      */
     if (vcpu->cached_int.pending) {
-        HANDLER_PRINT("Forwarding vector 0x%lX error code 0x%lX",
+        DEBUG_PRINT("Forwarding vector 0x%lX error code 0x%lX",
                       vcpu->cached_int.vector, vcpu->cached_int.code);
         vmm_inject_guest_event(vcpu->cached_int.vector, vcpu->cached_int.code);
         vcpu->cached_int.pending = false;
@@ -67,7 +61,7 @@ static bool handle_cpuid(struct vcpu_ctx *vcpu, bool *move_to_next)
     }
 #pragma GCC diagnostic pop
 
-    HANDLER_PRINT("CPUID leaf 0x%lX sub_leaf 0x%lX - 0x%lX 0x%lX 0x%lX 0x%lX",
+    DEBUG_PRINT("CPUID leaf 0x%lX sub_leaf 0x%lX - 0x%lX 0x%lX 0x%lX 0x%lX",
                   leaf, sub_leaf, out_regs[0], out_regs[1], out_regs[2], out_regs[3]);
 
     /* Store these leafs back into the guest context and move to next. */
@@ -87,7 +81,7 @@ static bool handle_xsetbv(struct vcpu_ctx *vcpu, bool *move_to_next)
     cr4 guest_cr4;
     guest_cr4.flags = __vmread(VMCS_GUEST_CR4);
     if (!guest_cr4.os_xsave) {
-        HANDLER_PRINT("XSETBV when CR4.os_xsave not set");
+        DEBUG_PRINT("XSETBV when CR4.os_xsave not set");
         vmm_inject_guest_event(invalid_opcode, DEFAULT_EC);
         *move_to_next = false;
         return true;
@@ -96,7 +90,7 @@ static bool handle_xsetbv(struct vcpu_ctx *vcpu, bool *move_to_next)
     /* Check that a valid XCR index is set (only 0 supported). */
     uint32_t field = (uint32_t)vcpu->guest_context.rcx;
     if (field) {
-        HANDLER_PRINT("XSETBV invalid XCR field 0x%X", field);
+        DEBUG_PRINT("XSETBV invalid XCR field 0x%X", field);
         vmm_inject_guest_event(general_protection, DEFAULT_EC);
         *move_to_next = false;
         return true;
@@ -114,7 +108,7 @@ static bool handle_xsetbv(struct vcpu_ctx *vcpu, bool *move_to_next)
 
     uint64_t value = (vcpu->guest_context.rdx << 32) | (uint32_t)vcpu->guest_context.rax;
 
-    HANDLER_PRINT("XSETBV field 0x%lX value 0x%lX", field, value);
+    DEBUG_PRINT("XSETBV field 0x%lX value 0x%lX", field, value);
     __xsetbv(field, value);
     
     *move_to_next = true;
@@ -125,7 +119,7 @@ static bool handle_invd(struct vcpu_ctx *vcpu, bool *move_to_next)
 {
     (void)vcpu;
     
-    HANDLER_PRINT("INVD");
+    DEBUG_PRINT("INVD");
     __invd();
     *move_to_next = true;
     return true;
@@ -165,7 +159,7 @@ static bool handle_rdmsr(struct vcpu_ctx *vcpu, bool *move_to_next)
     segment_selector cs;
     cs.flags = __vmread(VMCS_GUEST_CS_SEL);
     if (cs.request_privilege_level != 0) {
-        HANDLER_PRINT("RDMSR 0x%lX wrong RPL 0x%X", msr, cs.request_privilege_level);
+        DEBUG_PRINT("RDMSR 0x%lX wrong RPL 0x%X", msr, cs.request_privilege_level);
         vmm_inject_guest_event(general_protection, DEFAULT_EC);
         *move_to_next = false;
         return true;
@@ -176,7 +170,7 @@ static bool handle_rdmsr(struct vcpu_ctx *vcpu, bool *move_to_next)
         /* If so, temporarily MSR trap bitmap and enable MTF
          * we will then allow the vCPU to perform the read (if possible)
          * and then on the MTF exit we re-enable the trap bitmap. */
-        HANDLER_PRINT("Guest attempted to read MSR 0x%lX at rip 0x%lX", msr, vcpu->guest_context.rip);
+        DEBUG_PRINT("Guest attempted to read MSR 0x%lX at rip 0x%lX", msr, vcpu->guest_context.rip);
         set_mtf_trap_enabled(true);
         ignore_next_msr_action(vcpu, msr);
 
@@ -185,7 +179,7 @@ static bool handle_rdmsr(struct vcpu_ctx *vcpu, bool *move_to_next)
     }
 
     /* Invalid MSR which is out of range. */
-    HANDLER_PRINT("RDMSR 0x%lX out of range", msr);
+    DEBUG_PRINT("RDMSR 0x%lX out of range", msr);
     vmm_inject_guest_event(general_protection, DEFAULT_EC);
     *move_to_next = false;
     return true;
@@ -201,7 +195,7 @@ static bool handle_wrmsr(struct vcpu_ctx *vcpu, bool *move_to_next)
     segment_selector cs;
     cs.flags = __vmread(VMCS_GUEST_CS_SEL);
     if (cs.request_privilege_level != 0) {
-        HANDLER_PRINT("WRMSR 0x%lX 0x%lX wrong RPL 0x%X", msr_id, msr_val, cs.request_privilege_level);
+        DEBUG_PRINT("WRMSR 0x%lX 0x%lX wrong RPL 0x%X", msr_id, msr_val, cs.request_privilege_level);
         vmm_inject_guest_event(general_protection, DEFAULT_EC);
         *move_to_next = false;
         return true;
@@ -212,7 +206,7 @@ static bool handle_wrmsr(struct vcpu_ctx *vcpu, bool *move_to_next)
         /* If so, temporarily MSR trap bitmap and enable MTF
          * we will then allow the vCPU to perform the write (if possible)
          * and then on the MTF exit we re-enable the trap bitmap. */
-        HANDLER_PRINT("Guest attempted to write MSR 0x%lX val 0x%lX at rip 0x%lX",
+        DEBUG_PRINT("Guest attempted to write MSR 0x%lX val 0x%lX at rip 0x%lX",
                       msr_id, msr_val, vcpu->guest_context.rip);
         set_mtf_trap_enabled(true);
         ignore_next_msr_action(vcpu, msr_id);
@@ -222,7 +216,7 @@ static bool handle_wrmsr(struct vcpu_ctx *vcpu, bool *move_to_next)
     }
 
     /* Invalid MSR which is out of range. */
-    HANDLER_PRINT("WRMSR 0x%lX 0x%lX out of range", msr_id, msr_val);
+    DEBUG_PRINT("WRMSR 0x%lX 0x%lX out of range", msr_id, msr_val);
     vmm_inject_guest_event(general_protection, DEFAULT_EC);
     *move_to_next = false;
     return true;

@@ -1,15 +1,9 @@
+#define DEBUG_MODULE
 #include "platform/standard.h"
 #include "platform/intrin.h"
 #include "memory/vmem.h"
 #include "memory/mem.h"
 #include "ept.h"
-
-#define DEBUG_EPT
-#ifdef DEBUG_EPT
-    #define EPT_PRINT(...) debug_print(__VA_ARGS__)
-#else
-    #define EPT_PRINT(...)
-#endif
 
 #define ENTRIES_PER_TABLE 512
 
@@ -64,7 +58,7 @@ static void gather_mtrr_list(struct ept_ctx *ctx)
             mtrr->phys_base_max = mtrr->phys_base_min + ((1ull << bit_idx) - 1);
         }
 
-        EPT_PRINT("Valid %d type %d base_min %lX base_max %lX",
+        DEBUG_PRINT("Valid %d type %d base_min %lX base_max %lX",
                   mtrr->valid, mtrr->type, mtrr->phys_base_min, mtrr->phys_base_max);
     }
 }

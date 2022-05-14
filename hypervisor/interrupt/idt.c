@@ -1,3 +1,4 @@
+#define DEBUG_MODULE
 #include "platform/standard.h"
 #include "platform/intrin.h"
 #include "vmm/vmm_common.h"
@@ -39,13 +40,6 @@ struct exception_stack {
 	uint64_t cs;
 	rfl r_flags;
 };
-
-#define DEBUG_IDT
-#ifdef DEBUG_IDT
-    #define IDT_PRINT(...) debug_print(__VA_ARGS__)
-#else
-    #define IDT_PRINT(...)
-#endif
 
 #define IDT_ENTRY_COUNT 256
 
@@ -101,7 +95,7 @@ void idt_init(segment_descriptor_register_64 *orig_idtr, segment_descriptor_regi
 {
     /* Store the original IDTR. */
     __sidt(orig_idtr);
-    IDT_PRINT("Original IDTR base_addr %lX limit %X",
+    DEBUG_PRINT("Original IDTR base_addr %lX limit %X",
               orig_idtr->base_address, orig_idtr->limit);
 
     /* Create the IDTR. */
@@ -113,6 +107,6 @@ void idt_init(segment_descriptor_register_64 *orig_idtr, segment_descriptor_regi
         set_entry(i, interrupt_vector_table[i], SEGMENT_DESCRIPTOR_TYPE_INTERRUPT_GATE);
     }
 
-    IDT_PRINT("New IDTR base_addr %lX limit %X",
+    DEBUG_PRINT("New IDTR base_addr %lX limit %X",
               new_idtr->base_address, new_idtr->limit);
 }

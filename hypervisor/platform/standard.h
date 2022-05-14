@@ -61,4 +61,11 @@ static inline void print_buffer(const char *format, ...)
 
 #define assert(cond) die_on(!(cond), "assertion failed.");
 
+#ifdef DEBUG_MODULE
+    #define DEBUG_PRINT(...) debug_print(__VA_ARGS__)
+#else
+    #define DEBUG_PRINT(...)
+#endif
+
+
 #endif /* STANDARD_H */

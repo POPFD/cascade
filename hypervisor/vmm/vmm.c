@@ -1,3 +1,4 @@
+#define DEBUG_MODULE
 #include "platform/standard.h"
 #include "platform/efi_plat.h"
 #include "platform/intrin.h"
@@ -11,13 +12,6 @@
 
 /* The main VMM that will initialise the hypervisor,
  * currently this is aimed at only targetting x86_64 platforms. */
-
-#define DEBUG_VMM
-#ifdef DEBUG_VMM
-    #define VMM_PRINT(...) debug_print(__VA_ARGS__)
-#else
-    #define VMM_PRINT(...)
-#endif
 
 /* Mask used to ignore the ring level when specifying a selector. */
 #define IGNORE_RPL_MASK (~3)
@@ -39,7 +33,7 @@ const size_t VMM_HYPERJACK_STACK_OFFSET = offsetof(struct vcpu_ctx, host_stack) 
 
 static void probe_capabilities()
 {
-    VMM_PRINT("Checking CPU capabilities.");
+    DEBUG_PRINT("Checking CPU capabilities.");
 
     cpuid_eax_01 version_info;
     int rc = CPUID_LEAF_READ(CPUID_VERSION_INFO, version_info);
@@ -62,7 +56,7 @@ static void probe_capabilities()
     die_on(!ept_vpid.memory_type_write_back, "EPT memory type WB not supported.");
     die_on(!ept_vpid.pde_2mb_pages, "EPT 2MB pages not supported.");
 
-    VMM_PRINT("CPU seems to provide all capabilities needed.");
+    DEBUG_PRINT("CPU seems to provide all capabilities needed.");
 }
 
 static void print_gdt(char *prefix, segment_descriptor_register_64 *gdtr)
@@ -70,8 +64,8 @@ static void print_gdt(char *prefix, segment_descriptor_register_64 *gdtr)
     (void)prefix;
     (void)gdtr;
 
-    #ifdef DEBUG_VMM
-        VMM_PRINT("--- %s GDT base 0x%lX limit 0x%lX", prefix, gdtr->base_address, gdtr->limit);
+    #ifdef DEBUG_MODULE
+        DEBUG_PRINT("--- %s GDT base 0x%lX limit 0x%lX", prefix, gdtr->base_address, gdtr->limit);
 
         segment_descriptor_32 *gdt = (segment_descriptor_32 *)gdtr->base_address;
         int desc_max = (gdtr->limit + 1ull) / sizeof(segment_descriptor_32);
@@ -83,7 +77,7 @@ static void print_gdt(char *prefix, segment_descriptor_register_64 *gdtr)
                                 (curr_desc->base_address_middle << 16) |
                                 (curr_desc->base_address_low & UINT16_MAX);
 
-            VMM_PRINT("Descriptor 0x%lX\r\n" \
+            DEBUG_PRINT("Descriptor 0x%lX\r\n" \
                       "------ Flags 0x%X\r\n" \
                       "------ Present 0x%X\r\n" \
                       "------ Type 0x%X\r\n" \
@@ -124,14 +118,14 @@ static void configure_vcpu_gdt(struct gdt_config *gdt_cfg)
     uintptr_t host_gdt_phys = mem_va_to_pa(this_cr3, gdt_cfg->host_gdt);
     gdt_cfg->host_gdtr.base_address = host_gdt_phys;
     gdt_cfg->host_gdtr.limit = gdt_cfg->guest_gdtr.limit + sizeof(segment_descriptor_64);
-    VMM_PRINT("Host GDTR base %lX limit %lX",
+    DEBUG_PRINT("Host GDTR base %lX limit %lX",
               gdt_cfg->host_gdtr.base_address,
               gdt_cfg->host_gdtr.limit);
 
     /* Append the TR to the end of the GDT. */
     gdt_cfg->host_tr.flags = 0;
     gdt_cfg->host_tr.index = (gdt_cfg->guest_gdtr.limit + 1ull) / sizeof(segment_descriptor_32);
-    VMM_PRINT("Host TR index %d", gdt_cfg->host_tr.index);
+    DEBUG_PRINT("Host TR index %d", gdt_cfg->host_tr.index);
 
     uintptr_t tss_pa = mem_va_to_pa(this_cr3, &gdt_cfg->host_tss);
     segment_descriptor_64 tss_desc = { 0 };
@@ -165,7 +159,7 @@ static void capture_control_regs(struct control_registers *regs)
     regs->gs_base = rdmsr(IA32_GS_BASE);
     regs->dr7 = __readdr7();
 
-    VMM_PRINT("--- cr0 %lX\r\n" \
+    DEBUG_PRINT("--- cr0 %lX\r\n" \
               "--- cr3 %lX\r\n" \
               "--- cr4 %lX\r\n" \
               "--- debugctl %lX\r\n" \
@@ -316,7 +310,7 @@ static void setup_vmcs_host(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
 
     __vmwrite(VMCS_HOST_RSP, host_rsp);
     __vmwrite(VMCS_HOST_RIP, host_rip);
-    VMM_PRINT("VMCS_HOST_RIP: 0x%lX VMCS_HOST_RSP", host_rip, host_rsp);
+    DEBUG_PRINT("VMCS_HOST_RIP: 0x%lX VMCS_HOST_RSP", host_rip, host_rsp);
 }
 
 static void setup_vmcs_guest(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
@@ -424,7 +418,7 @@ static void setup_vmcs_guest(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
         if (curr_cfg->vmcs_base)
             __vmwrite(curr_cfg->vmcs_base, entry.base);
 
-        VMM_PRINT("VMX GDT Entry: %d\r\n" \
+        DEBUG_PRINT("VMX GDT Entry: %d\r\n" \
                   "--- VMCS SEL [0x%lX]: 0x%lX\r\n" \
                   "--- VMCS LIM [0x%lX]: 0x%lX\r\n" \
                   "--- VMCS AR [0x%lX]: 0x%lX\r\n" \
@@ -497,7 +491,7 @@ static void setup_vmcs_guest(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
     __vmwrite(VMCS_GUEST_RFLAGS, guest_ctx->e_flags);
     __vmwrite(VMCS_GUEST_RSP, guest_rsp);
     __vmwrite(VMCS_GUEST_RIP, guest_rip);
-    VMM_PRINT("VMCS_GUEST_RIP: 0x%lX VMCS_GUEST_RSP: 0x%lX PHYS_VCPU: 0x%lX",
+    DEBUG_PRINT("VMCS_GUEST_RIP: 0x%lX VMCS_GUEST_RSP: 0x%lX PHYS_VCPU: 0x%lX",
               guest_rip, guest_rsp, phys_vcpu_ctx);
 }
 
@@ -598,7 +592,7 @@ static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
     /* Set the pointer so we can retrive VMM context from the vCPU context. */
     vcpu->vmm = vmm;
 
-    VMM_PRINT("Initialising vCPU %ld vmm ctx 0x%lX vcpu ctx 0x%lX.", proc_idx, vmm, vcpu);
+    DEBUG_PRINT("Initialising vCPU %ld vmm ctx 0x%lX vcpu ctx 0x%lX.", proc_idx, vmm, vcpu);
 
     /* Configure the host GDT. */
     configure_vcpu_gdt(&vcpu->gdt_cfg);
@@ -621,7 +615,7 @@ static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
         setup_vmcs_guest(vmm, vcpu);
 
         /* Attempt VMLAUNCH. */
-        VMM_PRINT("Attempting VMLAUNCH on vCPU %d with ctx: 0x%lX", proc_idx, vcpu);
+        DEBUG_PRINT("Attempting VMLAUNCH on vCPU %d with ctx: 0x%lX", proc_idx, vcpu);
         __vmlaunch();
 
         /* 
@@ -678,7 +672,7 @@ __attribute__((noreturn)) void vmm_hyperjack_handler(struct vcpu_ctx *vcpu)
      * This time with the running_as_guest flag set, therefore the driver
      * should then exit successfully.
      */
-    VMM_PRINT("Retrieved vCPU context: 0x%lX", (uintptr_t)vcpu);
+    DEBUG_PRINT("Retrieved vCPU context: 0x%lX", (uintptr_t)vcpu);
 
     vcpu->running_as_guest = true;
     __restore_context(&vcpu->guest_context);
@@ -720,5 +714,5 @@ void vmm_inject_guest_event(exception_vector vector, exception_error_code code)
     if (info.deliver_error_code)
         __vmwrite(VMCS_CTRL_ENTRY_EXCEPTION_ERRCODE, code.flags);
 
-    VMM_PRINT("Injected guest event 0x%lX type 0x%lX code 0x%lX", vector, type, code.flags);
+    DEBUG_PRINT("Injected guest event 0x%lX type 0x%lX code 0x%lX", vector, type, code.flags);
 }

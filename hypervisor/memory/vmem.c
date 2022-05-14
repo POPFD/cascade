@@ -1,3 +1,4 @@
+//#define DEBUG_MODULE
 #include "platform/standard.h"
 #include "platform/intrin.h"
 #include "memory/pmem.h"
@@ -20,12 +21,6 @@
  * This allows for an easy seperation and determination of identity mapped vs allocated
  * memory.
  */
-//#define DEBUG_VMEM
-#ifdef DEBUG_VMEM
-    #define VMEM_PRINT(...) debug_print(__VA_ARGS__)
-#else
-    #define VMEM_PRINT(...)
-#endif
 
 #define ENTRIES_PER_TABLE 512
 #define DYN_VMEM_START GiB(512)
@@ -70,16 +65,16 @@ static void init_identity_table(struct vmem_ctx *ctx)
 
 static void create_table_entries(uintptr_t addr, bool write, bool exec)
 {
-    VMEM_PRINT("Creating page tables for address %lX write %d exec %d", addr, write, exec);
+    DEBUG_PRINT("Creating page tables for address %lX write %d exec %d", addr, write, exec);
 
     size_t pml4_idx = ADDRMASK_PML4_INDEX(addr);
     size_t pdpte_idx = ADDRMASK_PDPTE_INDEX(addr);
     size_t pde_idx = ADDRMASK_PDE_INDEX(addr);
     size_t pte_idx = ADDRMASK_PTE_INDEX(addr);
-    VMEM_PRINT("PML4[%d] PDPTE[%d] PDE[%d] PTE[%d]", pml4_idx, pdpte_idx, pde_idx, pte_idx);
+    DEBUG_PRINT("PML4[%d] PDPTE[%d] PDE[%d] PTE[%d]", pml4_idx, pdpte_idx, pde_idx, pte_idx);
 
     pml4e_64 *pml4e = &m_ctx->pml4[pml4_idx];
-    VMEM_PRINT("--- PML4E PFN[ADDR] %lX[%lX]", (uintptr_t)pml4e / PAGE_SIZE, pml4e);
+    DEBUG_PRINT("--- PML4E PFN[ADDR] %lX[%lX]", (uintptr_t)pml4e / PAGE_SIZE, pml4e);
 
     if (!pml4e->present) {
         pml4e->write = true;
@@ -90,7 +85,7 @@ static void create_table_entries(uintptr_t addr, bool write, bool exec)
 
     pdpte_64 *pdpt = (pdpte_64 *)((uintptr_t)pml4e->page_frame_number * PAGE_SIZE);
     pdpte_64 *pdpte = &pdpt[pdpte_idx];
-    VMEM_PRINT("--- PDPTE PFN[ADDR] %lX[%lX]", (uintptr_t)pdpte / PAGE_SIZE, pdpte);
+    DEBUG_PRINT("--- PDPTE PFN[ADDR] %lX[%lX]", (uintptr_t)pdpte / PAGE_SIZE, pdpte);
 
     if (!pdpte->present) {
         pdpte->write = true;
@@ -101,7 +96,7 @@ static void create_table_entries(uintptr_t addr, bool write, bool exec)
 
     pde_64 *pd = (pde_64 *)((uintptr_t)pdpte->page_frame_number * PAGE_SIZE);
     pde_64 *pde = &pd[pde_idx];
-    VMEM_PRINT("--- PDE PFN[ADDR] %lX[%lX]", (uintptr_t)pde / PAGE_SIZE, pde);
+    DEBUG_PRINT("--- PDE PFN[ADDR] %lX[%lX]", (uintptr_t)pde / PAGE_SIZE, pde);
 
     if (!pde->present) {
         pde->write = true;
@@ -112,7 +107,7 @@ static void create_table_entries(uintptr_t addr, bool write, bool exec)
 
     pte_64 *pt = (pte_64 *)((uintptr_t)pde->page_frame_number * PAGE_SIZE);
     pte_64 *pte = &pt[pte_idx];
-    VMEM_PRINT("--- PTE PFN[ADDR] %lX[%lX]", (uintptr_t)pte / PAGE_SIZE, pte);
+    DEBUG_PRINT("--- PTE PFN[ADDR] %lX[%lX]", (uintptr_t)pte / PAGE_SIZE, pte);
 
     die_on(pte->present, "PTE is already present for addr %lX", addr);
     pte->write = write;
@@ -120,13 +115,13 @@ static void create_table_entries(uintptr_t addr, bool write, bool exec)
     pte->page_frame_number = pmem_alloc_page() / PAGE_SIZE;
     die_on(!pte->page_frame_number, "Could not allocate PTE for addr %lX", addr);
     pte->present = true;
-    VMEM_PRINT("--- Allocated page memory PFN[ADDR] %lX[%lX]",
+    DEBUG_PRINT("--- Allocated page memory PFN[ADDR] %lX[%lX]",
                pte->page_frame_number, pte->page_frame_number * PAGE_SIZE);
 
     /* Invalidate the TLB for address. */
     __invlpg(&addr);
 
-#ifdef DEBUG_VMEM
+#ifdef DEBUG_MODULE
     /* Some debug code that ensures that the created PA matches if we
      * traverse the VA back to PA. */
     cr3 tmp_cr3;
@@ -141,13 +136,13 @@ static void create_table_entries(uintptr_t addr, bool write, bool exec)
 
 static void modify_entry_perms(uintptr_t addr, bool write, bool exec)
 {
-    VMEM_PRINT("Modifying page table entries for address %lX write %d exec %d", addr, write, exec);
+    DEBUG_PRINT("Modifying page table entries for address %lX write %d exec %d", addr, write, exec);
 
     size_t pml4_idx = ADDRMASK_PML4_INDEX(addr);
     size_t pdpte_idx = ADDRMASK_PDPTE_INDEX(addr);
     size_t pde_idx = ADDRMASK_PDE_INDEX(addr);
     size_t pte_idx = ADDRMASK_PTE_INDEX(addr);
-    VMEM_PRINT("PML4[%d] PDPTE[%d] PDE[%d] PTE[%d]", pml4_idx, pdpte_idx, pde_idx, pte_idx);
+    DEBUG_PRINT("PML4[%d] PDPTE[%d] PDE[%d] PTE[%d]", pml4_idx, pdpte_idx, pde_idx, pte_idx);
 
     pml4e_64 *pml4e = &m_ctx->pml4[pml4_idx];
     die_on(!pml4e->present, "PML4E for addr %lX not present", addr);
@@ -175,7 +170,7 @@ void vmem_init(cr3 *original_cr3, cr3 *new_cr3)
 {
     /* Store the original CR3 value before initialising the virtual-memory manager. */
     original_cr3->flags = __readcr3();
-    VMEM_PRINT("Storing original CR3 %lX", original_cr3->flags);
+    DEBUG_PRINT("Storing original CR3 %lX", original_cr3->flags);
 
     /*
      * Allocated a page for the vmem context.
@@ -200,7 +195,7 @@ void vmem_init(cr3 *original_cr3, cr3 *new_cr3)
     new_cr3->page_level_write_through = original_cr3->page_level_write_through;
     new_cr3->address_of_page_directory = ((uintptr_t)m_ctx->pml4) / PAGE_SIZE;
     __writecr3(new_cr3->flags);
-    VMEM_PRINT("New CR3 value loaded %lX", new_cr3->flags);
+    DEBUG_PRINT("New CR3 value loaded %lX", new_cr3->flags);
 }
 
 void *vmem_alloc(size_t size, unsigned int flags)
@@ -210,10 +205,10 @@ void *vmem_alloc(size_t size, unsigned int flags)
      * free start address create a table entry.
      */
 
-    VMEM_PRINT("Unaligned size: %ld", size);
+    DEBUG_PRINT("Unaligned size: %ld", size);
     /* Align size to next largest page. */
     size = (size & PAGE_MASK) ? ((size + PAGE_SIZE) & ~PAGE_MASK) : size;
-    VMEM_PRINT("Attempting allocation of size: %ld", size);
+    DEBUG_PRINT("Attempting allocation of size: %ld", size);
 
     /* Determine info from flags. */
     bool write = (flags & MEM_WRITE) != 0;
@@ -221,7 +216,7 @@ void *vmem_alloc(size_t size, unsigned int flags)
 
     uintptr_t start_addr = m_ctx->next_free_addr;
     uintptr_t end_addr = start_addr + size;
-    VMEM_PRINT("Start addr 0x%lX end addr 0x%lX diff 0x%lX", start_addr, end_addr, end_addr - start_addr);
+    DEBUG_PRINT("Start addr 0x%lX end addr 0x%lX diff 0x%lX", start_addr, end_addr, end_addr - start_addr);
 
     for (uintptr_t curr_addr = start_addr;
          curr_addr < end_addr;
