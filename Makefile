@@ -15,6 +15,7 @@ export BUILDDIR
 .PHONY: all
 all: prep_dirs
 	$(MAKE) -C hypervisor
+	$(MAKE) -C plugin-loader
 
 # Configuration that creates directories needed
 prep_dirs:
