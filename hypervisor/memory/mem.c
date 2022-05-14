@@ -1,5 +1,14 @@
 #include "mem.h"
 
+static void copy_physical_page(enum copy_dir dir, uintptr_t addr, void *buffer, size_t size)
+{
+    if (dir == COPY_READ) {
+        memcpy(buffer, (const void *)addr, size);
+    } else {
+        memcpy((void *)addr, buffer, size);
+    }
+}
+
 static pt_entry_64 *get_pte_from_va(cr3 table, void *va, int *level)
 {
     size_t pml4_idx = ADDRMASK_PML4_INDEX(va);
@@ -68,4 +77,43 @@ uintptr_t mem_va_to_pa(cr3 table, void *va)
         die_on(true, "Invalid pte level %d for va %lX", level, va);
         break;
     }
+}
+
+bool mem_copy_virtual_memory(enum copy_dir dir, cr3 table,
+                             uintptr_t addr, void *buffer, size_t size)
+{
+    die_on(!table.flags, "Invalid CR3 value");
+    die_on(!addr, "Invalid virtual address");
+    die_on(!buffer, "Invalid host buffer");
+    die_on(!size, "Invalid size");
+
+    bool result = true;
+
+    /*
+     * As buffer referenced in the virtual address may not have a contiguous
+     * physical address for each page, we need to retrieve and copy pages individually.
+     */
+    while (size) {
+        /* Calculate how many bytes need to be copied for this page. */
+        size_t page_offset = ADDRMASK_PTE_OFFSET(addr);
+        size_t copy_this_page = PAGE_SIZE - page_offset;
+        size_t bytes_to_copy = (copy_this_page < size) ? copy_this_page : size;
+
+        /* Get this physical address of this page. */
+        uintptr_t phys_addr = mem_va_to_pa(table, (void *)addr);
+        if (!phys_addr) {
+            result = false;
+            break;
+        }
+
+        /* Do the operation for copying the page. */
+        copy_physical_page(dir, phys_addr, buffer, bytes_to_copy);
+
+        /* Update counters for next page. */
+        addr += bytes_to_copy;
+        buffer = (void *)((uintptr_t)buffer + bytes_to_copy);
+        size -= bytes_to_copy;
+    }
+
+    return result;
 }
