@@ -9,7 +9,7 @@ static size_t handle_check_presence(struct vcpu_ctx *vcpu, struct vmcall_param *
 {
     (void)vcpu;
     (void)host_param;
-    return ~VMCALL_SECRET_KEY;
+    return 0;
 }
 
 bool vmcall_handle(struct vcpu_ctx *vcpu, bool *move_to_next)

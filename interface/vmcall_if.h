@@ -19,7 +19,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define VMCALL_SECRET_KEY 0x0CA5CADE
+#define VMCALL_SECRET_KEY ((size_t)0x0CA5CADE)
 
 enum vmcall_action {
     ACTION_CHECK_PRESENCE,

@@ -8,6 +8,7 @@ LD := x86_64-w64-mingw32-ld
 
 CFLAGS := -Wall		\
 	-Werror			\
+	-I/usr/share/mingw-w64/include \
 	-I../interface/ \
 	-std=c++11		\
 
