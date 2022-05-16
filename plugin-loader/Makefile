@@ -11,7 +11,8 @@ CFLAGS := -Wall		\
 	-I../interface/ \
 	-std=c++11		\
 
-#LDFLAGS :=
+LDFLAGS := -static \
+	-lstdc++
 
 # Use wildcards to gather all of the c/cpp files we need to find.
 C_FILES := $(shell find . -name '*.c' -o -name '*.cpp')
