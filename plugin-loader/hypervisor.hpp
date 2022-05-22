@@ -20,4 +20,5 @@ public:
 
     /* Hypervisor specific actions. */
     bool check_presence();
+    bool load_plugin(std::string file_name);
 };

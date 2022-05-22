@@ -51,7 +51,7 @@ static bool check_image(uint8_t *guest_raw, size_t plugin_size)
                 "--- idh.e_magic: 0x%lX\n" \
                 "--- idh.e_lfanew: 0x%lX\n" \
                 "--- inh.opt.magic: 0x%lX\n" \
-                "--- inh.opt.size_of_hdr: 0x%lX\n\n",
+                "--- inh.opt.size_of_hdrs: 0x%lX\n\n",
                 plugin_size,
                 idh.e_magic,
                 idh.e_lfanew,
@@ -76,5 +76,5 @@ int plugin_load(struct vmm_ctx *vmm, void *guest_raw, size_t plugin_size)
         DEBUG_PRINT("Plugin does not meet integrity.\n");
     }
 
-    return false;
+    return 0;
 }

@@ -1,4 +1,6 @@
 #include <iostream>
+#include <fstream>
+#include <vector>
 #include <windows.h>
 #include "hypervisor.hpp"
 
@@ -52,6 +54,29 @@ bool hypervisor::check_presence()
      */
     vmcall_param param = {};
     param.action = ACTION_CHECK_PRESENCE;
+    return send_call(param);
+}
+
+bool hypervisor::load_plugin(std::string file_name)
+{
+    /* Read the file into a vector. */
+    std::ifstream file_stream(file_name, std::ios::binary);
+    if (file_stream.fail()) {
+        std::cout << "Unable to open plugin: " + file_name + "\n";
+        return false;
+    }
+    std::vector<uint8_t> raw_bytes(std::istreambuf_iterator<char>(file_stream), {});
+
+    /* Set up the plugin loading action pointing to raw plugin bytes + size. */
+    vmcall_param_load_plugin plugin_param = {};
+    plugin_param.plugin = &raw_bytes[0];
+    plugin_param.raw_size = raw_bytes.size();
+
+    /* Set up the main vmcall action pointing to our plugin parameters. */
+    vmcall_param param = {};
+    param.action = ACTION_LOAD_PLUGIN;
+    param.param = &plugin_param;
+    param.param_size = sizeof(plugin_param);
     return send_call(param);
 }
 
