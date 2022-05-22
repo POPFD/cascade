@@ -1,4 +1,4 @@
-#define DEBUG_MODULE
+//#define DEBUG_MODULE
 #include "platform/standard.h"
 #include "platform/intrin.h"
 #include "memory/mem.h"
@@ -209,6 +209,7 @@ static bool handle_wrmsr(struct vcpu_ctx *vcpu, bool *move_to_next)
          * and then on the MTF exit we re-enable the trap bitmap. */
         DEBUG_PRINT("Guest attempted to write MSR 0x%lX val 0x%lX at rip 0x%lX",
                       msr_id, msr_val, vcpu->guest_context.rip);
+        (void)msr_val;
         set_mtf_trap_enabled(true);
         ignore_next_msr_action(vcpu, msr_id);
 
