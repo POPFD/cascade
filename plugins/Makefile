@@ -16,7 +16,9 @@ LDFLAGS := -static \
 	-lstdc++
 
 # Use wildcards to gather all of the c/cpp files we need to find.
-C_FILES := $(shell find . -name '*.c' -o -name '*.cpp')
+# This only searches in the current directory as we don't want plugins
+# to be accidentally included.
+C_FILES := $(shell find . -maxdepth 1 -name '*.c' -o -name '*.cpp')
 OBJ_FILES := $(patsubst %.c, %.o, $(C_FILES))
 OBJ_FILES := $(patsubst %.cpp, %.o, $(OBJ_FILES))
 
@@ -28,7 +30,6 @@ all: $(OUT_EXE_NAME)
 	$(CC) -c -o $(OUT_OBJ_DIR)/$@ $< $(CFLAGS)
 
 $(OUT_EXE_NAME): $(OBJ_FILES)
-	echo $(OBJ_FILES)
 	rm -f $(OUT_EXE_NAME)
 	$(CC) -o $@ $(addprefix $(OUT_OBJ_DIR)/, $^) $(LDFLAGS)
 
