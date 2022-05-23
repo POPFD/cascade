@@ -10,7 +10,7 @@ int main()
     } else {
         std::cout << "Cascade present!\n";
 
-        if (!hv.load_plugin("plugin-loader.exe")) {
+        if (!hv.load_plugin("hello-world.dll")) {
             std::cout << "Unable to load plugin.\n";
         } else {
             std::cout << "Plugin loaded.\n";

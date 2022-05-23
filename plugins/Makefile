@@ -24,6 +24,7 @@ OBJ_FILES := $(patsubst %.cpp, %.o, $(OBJ_FILES))
 
 .PHONY: all
 all: $(OUT_EXE_NAME)
+	$(MAKE) -C hello-world
 
 %.o: %.cpp
 	mkdir -p  $(OUT_OBJ_DIR)/$(dir $<)
