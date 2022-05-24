@@ -59,18 +59,15 @@ bool hypervisor::check_presence()
 
 bool hypervisor::load_plugin(std::string file_name)
 {
-    /* Read the file into a vector. */
-    std::ifstream file_stream(file_name, std::ios::binary);
-    if (file_stream.fail()) {
-        std::cout << "Unable to open plugin: " + file_name + "\n";
-        return false;
+    /* Load the plugin into this process dynamically then store image start. */
+    HMODULE handle_plugin = LoadLibraryA(file_name.c_str());
+    if (!handle_plugin) {
+        std::cout << "Unable to load " << file_name << " into plugin loader.\n";
     }
-    std::vector<uint8_t> raw_bytes(std::istreambuf_iterator<char>(file_stream), {});
 
     /* Set up the plugin loading action pointing to raw plugin bytes + size. */
     vmcall_param_load_plugin plugin_param = {};
-    plugin_param.plugin = &raw_bytes[0];
-    plugin_param.raw_size = raw_bytes.size();
+    plugin_param.plugin = (void *)handle_plugin;
 
     /* Set up the main vmcall action pointing to our plugin parameters. */
     vmcall_param param = {};

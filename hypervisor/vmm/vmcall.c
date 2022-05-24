@@ -11,7 +11,7 @@ static size_t handle_check_presence(struct vcpu_ctx *vcpu, struct vmcall_param *
 {
     (void)vcpu;
     (void)host_param;
-    DEBUG_PRINT("Guest checked presence.\n");
+    DEBUG_PRINT("Guest checked presence.");
     return 0;
 }
 
@@ -32,14 +32,14 @@ static size_t handle_load_plugin(struct vcpu_ctx *vcpu, struct vmcall_param *hos
         DEBUG_PRINT("Unable to copy plugin parameter to host.");
         return -1;
     }
-    DEBUG_PRINT("Guest requests loading of plugin. guest pointer 0x%lX size 0x%lX",
-                plugin_param.plugin, plugin_param.raw_size);
+    DEBUG_PRINT("Guest requests loading of plugin. guest pointer 0x%lX",
+                plugin_param.plugin);
 
     /* 
      * Now pass the plugin parameters to our plugin loader module
      * so that it can be dynamically loaded.
      */
-    return plugin_load(vcpu->vmm, plugin_param.plugin, plugin_param.raw_size);
+    return plugin_load(vcpu->vmm, plugin_param.plugin);
 }
 
 bool vmcall_handle(struct vcpu_ctx *vcpu, bool *move_to_next)
@@ -87,7 +87,7 @@ bool vmcall_handle(struct vcpu_ctx *vcpu, bool *move_to_next)
         if (mem_copy_virtual_memory(COPY_READ, guest_cr3, guest_param,
                                     &host_param, sizeof(host_param))) {
 
-            DEBUG_PRINT("action 0x%lX param 0x%lX param_size 0x%lX\n",
+            DEBUG_PRINT("action 0x%lX param 0x%lX param_size 0x%lX",
                         host_param.action, host_param.param, host_param.param_size);
 
             /* Check to see if handler is defined for action. */

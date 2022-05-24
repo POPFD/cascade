@@ -65,6 +65,10 @@ struct plugin_if {
     } event;
 };
 
+/* Callback/export for when plugin has been loaded into host. */
+#define PLUGIN_LOAD_EXPORT_NAME "HypervisorLoad"
+typedef int (*plugin_load_t)(struct vmm_ctx *vmm, struct plugin_if *hv_if);
+
 #ifdef __cplusplus
 }
 #endif

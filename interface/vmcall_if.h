@@ -40,7 +40,6 @@ struct vmcall_param {
 
 struct vmcall_param_load_plugin {
     void *plugin;
-    size_t raw_size;
 };
 
 #endif /* VMCALL_IF_H */
