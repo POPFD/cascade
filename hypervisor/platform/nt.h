@@ -10,6 +10,35 @@
 #define IMAGE_NT_OPTIONAL_HDR64_MAGIC 0x20b
 #define IMAGE_NUMBEROF_DIRECTORY_ENTRIES 16
 
+#define IMAGE_DIRECTORY_ENTRY_EXPORT          0   // Export Directory
+#define IMAGE_DIRECTORY_ENTRY_IMPORT          1   // Import Directory
+#define IMAGE_DIRECTORY_ENTRY_RESOURCE        2   // Resource Directory
+#define IMAGE_DIRECTORY_ENTRY_EXCEPTION       3   // Exception Directory
+#define IMAGE_DIRECTORY_ENTRY_SECURITY        4   // Security Directory
+#define IMAGE_DIRECTORY_ENTRY_BASERELOC       5   // Base Relocation Table
+#define IMAGE_DIRECTORY_ENTRY_DEBUG           6   // Debug Directory
+//      IMAGE_DIRECTORY_ENTRY_COPYRIGHT       7   // (X86 usage)
+#define IMAGE_DIRECTORY_ENTRY_ARCHITECTURE    7   // Architecture Specific Data
+#define IMAGE_DIRECTORY_ENTRY_GLOBALPTR       8   // RVA of GP
+#define IMAGE_DIRECTORY_ENTRY_TLS             9   // TLS Directory
+#define IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG    10   // Load Configuration Directory
+#define IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT   11   // Bound Import Directory in headers
+#define IMAGE_DIRECTORY_ENTRY_IAT            12   // Import Address Table
+#define IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT   13   // Delay Load Import Descriptors
+#define IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR 14   // COM Runtime descriptor
+
+#define IMAGE_REL_BASED_ABSOLUTE 0
+#define IMAGE_REL_BASED_HIGH 1
+#define IMAGE_REL_BASED_LOW 2
+#define IMAGE_REL_BASED_HIGHLOW 3
+#define IMAGE_REL_BASED_HIGHADJ 4
+#define IMAGE_REL_BASED_MIPS_JMPADDR 5
+#define IMAGE_REL_BASED_ARM_MOV32 5
+#define IMAGE_REL_BASED_THUMB_MOV32 7
+#define IMAGE_REL_BASED_MIPS_JMPADDR16 9
+#define IMAGE_REL_BASED_IA64_IMM64 9
+#define IMAGE_REL_BASED_DIR64 10
+
 struct image_dos_header {
     uint16_t e_magic;
     uint16_t e_cblp;
@@ -84,6 +113,11 @@ struct image_nt_headers64 {
     uint32_t signature;
     struct image_file_header file_header;
     struct image_optional_header64 optional_header;
+};
+
+struct image_base_relocation {
+    uint32_t virtual_address;
+    uint32_t size_of_block;
 };
 
 #pragma pack(pop)
