@@ -65,9 +65,28 @@ bool hypervisor::load_plugin(std::string file_name)
         std::cout << "Unable to load " << file_name << " into plugin loader.\n";
     }
 
+    /*
+     * It is not guaranteed that every page within the loaded image is currently
+     * mapped into the process due to paging. As the hypervisor CANNOT deal with
+     * paged out pages we attempt to read every page to attempt to get them all
+     * present within memory.
+     *
+     * We can guarantee that every page within a DLL is readable.
+     */
+    uint8_t *raw_image = reinterpret_cast<uint8_t *>(handle_plugin);
+    PIMAGE_DOS_HEADER idh = reinterpret_cast<PIMAGE_DOS_HEADER>(raw_image);
+    PIMAGE_NT_HEADERS inh = reinterpret_cast<PIMAGE_NT_HEADERS>(&raw_image[idh->e_lfanew]);
+
+    for (size_t i = 0; i < inh->OptionalHeader.SizeOfImage; i += 0x1000) {
+        /* Perform a bogus read of the page, using the if Sleep to prevent
+         * optimisation. */
+        if (raw_image[i])
+            Sleep(0);
+    }
+
     /* Set up the plugin loading action pointing to raw plugin bytes + size. */
     vmcall_param_load_plugin plugin_param = {};
-    plugin_param.plugin = (void *)handle_plugin;
+    plugin_param.plugin = raw_image;
 
     /* Set up the main vmcall action pointing to our plugin parameters. */
     vmcall_param param = {};
