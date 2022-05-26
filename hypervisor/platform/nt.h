@@ -120,6 +120,20 @@ struct image_base_relocation {
     uint32_t size_of_block;
 };
 
+struct image_export_directory {
+	uint32_t characteristics;
+	uint32_t time_date_stamp;
+	uint16_t major_version;
+	uint16_t minor_version;
+	uint32_t name;
+	uint32_t base;
+	uint32_t number_of_functions;
+	uint32_t number_of_names;
+	uint32_t address_of_functions;     // RVA from base of image
+	uint32_t address_of_names;         // RVA from base of image
+	uint32_t address_of_name_ordinals; // RVA from base of image
+};
+
 #pragma pack(pop)
 
 #endif /* NT_H */

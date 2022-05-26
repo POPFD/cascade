@@ -88,7 +88,7 @@ static void relocate_image(uint8_t *new_image)
             (uint16_t *)((uintptr_t)curr_base_reloc + sizeof(struct image_base_relocation));
 
         size_t item_count =
-            (curr_base_reloc->size_of_block / sizeof(struct image_base_relocation)) / sizeof(uint16_t);
+            (curr_base_reloc->size_of_block - sizeof(struct image_base_relocation)) / sizeof(uint16_t);
 
         for (size_t i = 0; i < item_count; i++) {
             const uint16_t type = item_start[i] >> 12;
@@ -96,8 +96,10 @@ static void relocate_image(uint8_t *new_image)
 
             /* Only able to relocate DIR64 type. */
             if (type != IMAGE_REL_BASED_DIR64) {
-                DEBUG_PRINT("Cannot relocate item of type: 0x%X item_start 0x%lX.",
-                            type, &item_start[i]);
+                /* We can skip absolutes no matter what, no point logging. */
+                if (type != IMAGE_REL_BASED_ABSOLUTE)
+                    DEBUG_PRINT("Cannot relocate item of type: 0x%X item_start 0x%lX.",
+                                type, &item_start[i]);
                 continue;
             }
 
@@ -118,14 +120,66 @@ static void relocate_image(uint8_t *new_image)
     inh->optional_header.image_base = (uint64_t)new_image;
 }
 
+static bool is_str_same(const char *name1, const char *name2)
+{
+    /*
+     * We could simply use memcmp with strlen, however
+     * we do not have these linked so I just reinvent the
+     * wheel.
+     */
+	bool result = true;
+	size_t count = 0;
+
+	while ((name1[count] != '\0') && (name2[count] != '\0'))
+	{
+		if (name1[count] != name2[count])
+		{
+			result = false;
+			break;
+		}
+
+		count++;
+	}
+
+	return result;
+}
+
+static void *get_export_by_name(uint8_t *image, const char *export_name)
+{
+    /* We assume IDH and INH are valid already by this point. */
+    struct image_dos_header *idh = (struct image_dos_header *)image;
+    struct image_nt_headers64 *inh = (struct image_nt_headers64 *)&image[idh->e_lfanew];
+
+    /* Get the virtual address of the image export directory. */
+    uintptr_t ied_va = inh->optional_header.data_directory[IMAGE_DIRECTORY_ENTRY_EXPORT].virtual_address;
+    if (!ied_va) {
+        DEBUG_PRINT("Image 0x%lX has no export directory.", image);
+        return NULL;
+    }
+
+    struct image_export_directory *ied = (struct image_export_directory *)&image[ied_va];
+    uint32_t *address_ptr = (uint32_t *)&image[ied->address_of_functions];
+    uint32_t *name_ptr = (uint32_t *)&image[ied->address_of_names];
+    uint16_t *ordinal_ptr = (uint16_t *)&image[ied->address_of_name_ordinals];
+
+    /* Iterate through all of the named exports and check to see if any match. */
+    for (uint32_t i = 0; i < ied->number_of_names; i++) {
+        const char *name = (const char *)&image[name_ptr[i]];
+
+        if (is_str_same(export_name, name))
+            return (void *)&image[address_ptr[ordinal_ptr[i]]];
+    }
+
+    DEBUG_PRINT("Image 0x%lX does not contain export %s", image, export_name);
+    return NULL;
+}
+
 static bool load_image(struct vmm_ctx *vmm,
                       void *guest_raw,
-                      struct image_dos_header *orig_idh,
                       struct image_nt_headers64 *orig_inh,
                       plugin_load_t *load_callback)
 {
     (void)vmm;
-    (void)orig_idh;
     (void)load_callback;
 
     /* 
@@ -158,7 +212,13 @@ static bool load_image(struct vmm_ctx *vmm,
      * into the hypervisor.
      */
 
-    /* TODO: Locate export for the load_callback. */
+    /* Locate the export from the image which we call once plugin is loaded into HV. */
+    plugin_load_t cbk = (plugin_load_t)get_export_by_name(new_image, PLUGIN_LOAD_EXPORT_NAME);
+    if (cbk) {
+        DEBUG_PRINT("Found load callback at 0x%lX", cbk);
+        *load_callback = cbk;
+        return true;
+    }
 
     return false;
 }
@@ -184,7 +244,7 @@ int plugin_load(struct vmm_ctx *vmm, void *guest_raw)
      * we now need to load it into the host memory and perform relocations.
      */
     plugin_load_t load_callback;
-    if (!load_image(vmm, guest_raw, &idh, &inh, &load_callback)) {
+    if (!load_image(vmm, guest_raw, &inh, &load_callback)) {
         DEBUG_PRINT("Unable to load plugin image.");
         return -1;
     }
