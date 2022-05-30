@@ -3,8 +3,8 @@
 #include "platform/nt.h"
 #include "memory/mem.h"
 #include "memory/vmem.h"
-#include "cascade_if.h"
 #include "plugin.h"
+#include "plugin-shim.h"
 
 static bool check_image(uint8_t *guest_raw,
                         struct image_dos_header *idh,
@@ -189,6 +189,7 @@ static bool load_image(struct vmm_ctx *vmm,
      */
     size_t image_size = orig_inh->optional_header.size_of_image;
     uint8_t *new_image = (uint8_t *)vmem_alloc(image_size, MEM_WRITE | MEM_EXECUTE);
+    DEBUG_PRINT("Allocated memory at address 0x%lX for plugin.", new_image);
     if (!new_image) {
         DEBUG_PRINT("Unable to allocate memory for plugin image.");
         return false;
@@ -251,7 +252,8 @@ int plugin_load(struct vmm_ctx *vmm, void *guest_raw)
 
     /* TODO: Register plugin to main VMM plugin list. */
 
-    /* TODO: Call export for plugin host init (call load_callback). */
+    /* Call export for plugin host init. */
+    load_callback(vmm, &PLUGIN_INTERFACE);
 
     return 0;
 }

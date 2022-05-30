@@ -2,7 +2,7 @@
 #include <windows.h>
 #include "cascade_if.h"
 
-__declspec(dllexport) int HypervisorLoad(struct vmm_ctx *vmm, struct plugin_if *hv_if)
+__declspec(dllexport) int MS_ABI HypervisorLoad(struct vmm_ctx *vmm, const struct plugin_if *hv_if)
 {
     /*
      * This export is called by the hypervisor once it has been loaded into

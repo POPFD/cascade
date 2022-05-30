@@ -26,29 +26,32 @@ extern "C" {
 typedef struct vmm_ctx *vmm_ctx_t;
 typedef struct vcpu_ctx *vcpu_ctx_t;
 
+/* Definition of the ABI used for structure. */
+#define MS_ABI __attribute__((ms_abi))
+
 /* Callback to take place from a specific event. */
-typedef int (*event_cbk_t)(struct vcpu_ctx *vcpu, void *opaque);
+typedef int (MS_ABI *event_cbk_t)(struct vcpu_ctx *vcpu, void *opaque);
 
 struct plugin_if {
     uint8_t version;
 
     struct {
-        void (*print)(const char *format, ...);
+        void (MS_ABI *print)(const char *format, ...);
     } debug;
 
     struct {
         struct {
             /* Allocate physical page within host hypervisor context. */
-            uintptr_t (*alloc_page)(void);
+            uintptr_t (MS_ABI *alloc_page)(void);
             /* Allocate contiguous physical memory within host hypervisor context. */
-            uintptr_t (*alloc_contiguous)(size_t bytes);
+            uintptr_t (MS_ABI *alloc_contiguous)(size_t bytes);
             /* Free physical page within host hypervisor context. */
-            void (*free_page)(uintptr_t page);
+            void (MS_ABI *free_page)(uintptr_t page);
         } phys;
 
         struct {
             /* Allocate virtual memory within host hypervisor context. */
-            void *(*alloc)(size_t size, bool write, bool exec);
+            void *(MS_ABI *alloc)(size_t size, bool write, bool exec);
             /* TODO: Create free routine. */
         } virt;
 
@@ -60,14 +63,14 @@ struct plugin_if {
 
     struct {
         /* Register an event handler for a specific VMEXIT. */
-        int (*register_event_cbk)(size_t exit_reason, event_cbk_t callback);
-        int (*unregister_event_cbk)(event_cbk_t callback);
+        int (MS_ABI *register_event_cbk)(size_t exit_reason, event_cbk_t callback);
+        int (MS_ABI *unregister_event_cbk)(event_cbk_t callback);
     } event;
 };
 
 /* Callback/export for when plugin has been loaded into host. */
 #define PLUGIN_LOAD_EXPORT_NAME "HypervisorLoad"
-typedef int (*plugin_load_t)(struct vmm_ctx *vmm, struct plugin_if *hv_if);
+typedef int (MS_ABI *plugin_load_t)(struct vmm_ctx *vmm, const struct plugin_if *hv_if);
 
 #ifdef __cplusplus
 }
