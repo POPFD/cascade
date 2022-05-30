@@ -48,9 +48,11 @@ static inline void print_buffer(const char *format, ...)
 }
 
 #define debug_print(format, ...) \
-    print_buffer("[0x%lX] %s %s (L%04d) - ", rdmsr(0x00000010), __FILE__, __func__, __LINE__); \
-    print_buffer(format, ##__VA_ARGS__); \
-    print_buffer("\r\n");
+    do { \
+        print_buffer("[0x%lX] %s %s (L%04d) - ", rdmsr(0x00000010), __FILE__, __func__, __LINE__); \
+        print_buffer(format, ##__VA_ARGS__); \
+        print_buffer("\r\n"); \
+    } while (0)
 
 #define die_on(cond, ...) do { \
         if (cond) { \
