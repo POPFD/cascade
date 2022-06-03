@@ -42,6 +42,7 @@ struct vmm_ctx {
     struct vmm_init_params init;
     struct ept_ctx *ept;
     struct plugin_info *plugin_list;
+    struct plugin_event *plugin_event_list;
     spinlock_t lock;
 };
 

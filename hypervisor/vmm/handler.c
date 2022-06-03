@@ -3,6 +3,7 @@
 #include "platform/intrin.h"
 #include "memory/mem.h"
 #include "interrupt/idt.h"
+#include "plugin/event.h"
 #include "vmm_common.h"
 #include "vmcall.h"
 #include "ia32_compact.h"
@@ -387,17 +388,24 @@ static void handle_exit_reason(struct vcpu_ctx *vcpu)
 
     /* Determine the exit reason and then call the appropriate exit handler. */
     size_t reason = __vmread(VMCS_EXIT_REASON) & 0xFFFF;
-
-    die_on(reason >= ARRAY_SIZE(EXIT_HANDLERS),
-           "Exit reason 0x%lX rip 0x%lX not within range of handler table",
-           reason, vcpu->guest_context.rip);
-
-    die_on(!EXIT_HANDLERS[reason],
-           "Exit reason 0x%lX rip 0x%lX not declared in handler table",
-           reason, vcpu->guest_context.rip);
-
+    bool success;
     bool move_to_next_instr = false;
-    bool success = EXIT_HANDLERS[reason](vcpu, &move_to_next_instr);
+
+    /* Check to see if the exit is to be handled by a plugin, if so
+     * we can do nothing. */
+    success = plugin_handle_event(vcpu, reason, &move_to_next_instr);
+    if (!success) {
+        /* If not handled by plugin we should do it here. */
+        die_on(reason >= ARRAY_SIZE(EXIT_HANDLERS),
+            "Exit reason 0x%lX rip 0x%lX not within range of handler table",
+            reason, vcpu->guest_context.rip);
+
+        die_on(!EXIT_HANDLERS[reason],
+            "Exit reason 0x%lX rip 0x%lX not declared in handler table",
+            reason, vcpu->guest_context.rip);
+
+        success = EXIT_HANDLERS[reason](vcpu, &move_to_next_instr);
+    }
 
     size_t qual = __vmread(VMCS_EXIT_QUALIFICATION);
     die_on(!success,

@@ -30,7 +30,9 @@ typedef struct vcpu_ctx *vcpu_ctx_t;
 #define MS_ABI __attribute__((ms_abi))
 
 /* Callback to take place from a specific event. */
-typedef int (MS_ABI *event_cbk_t)(struct vcpu_ctx *vcpu, void *opaque);
+typedef bool (MS_ABI *event_cbk_t)(struct vcpu_ctx *vcpu,
+                                   void *opaque,
+                                   bool *move_to_next);
 
 struct plugin_if {
     uint8_t version;
@@ -63,8 +65,11 @@ struct plugin_if {
 
     struct {
         /* Register an event handler for a specific VMEXIT. */
-        int (MS_ABI *register_event)(size_t exit_reason, event_cbk_t callback);
-        int (MS_ABI *unregister_event)(event_cbk_t callback);
+        void (MS_ABI *register_event)(struct vmm_ctx *vmm,
+                                      size_t exit_reason,
+                                      event_cbk_t callback,
+                                      void *opaque);
+        void (MS_ABI *unregister_event)(struct vmm_ctx *vmm, event_cbk_t callback);
     } event;
 };
 
