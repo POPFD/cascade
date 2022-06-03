@@ -9,6 +9,6 @@ qemu-img create -f qcow2 -b $TARGET_IMG $TARGET_IMG_SNAP
 
 # To exit do Ctrl-A X
 ./submodules/uefi-run/target/debug/uefi-run -b /usr/share/OVMF/OVMF_CODE.fd -q /usr/bin/qemu-system-x86_64 build/hypervisor.efi -- \
-    -display gtk -enable-kvm -serial stdio -cpu host -smp 4 -m 4G \
+    -display gtk -enable-kvm -serial stdio -cpu host -smp 4 -m 8G \
     -drive file=$TARGET_IMG_SNAP,media=disk,if=ide,cache=off,index=1 \
     -drive file=fat:rw:./build/
