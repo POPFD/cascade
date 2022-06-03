@@ -591,6 +591,7 @@ static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
 
     /* Set the pointer so we can retrive VMM context from the vCPU context. */
     vcpu->vmm = vmm;
+    vcpu->idx = proc_idx;
 
     DEBUG_PRINT("Initialising vCPU %ld vmm ctx 0x%lX vcpu ctx 0x%lX.", proc_idx, vmm, vcpu);
 
