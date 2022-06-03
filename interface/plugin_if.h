@@ -63,8 +63,8 @@ struct plugin_if {
 
     struct {
         /* Register an event handler for a specific VMEXIT. */
-        int (MS_ABI *register_event_cbk)(size_t exit_reason, event_cbk_t callback);
-        int (MS_ABI *unregister_event_cbk)(event_cbk_t callback);
+        int (MS_ABI *register_event)(size_t exit_reason, event_cbk_t callback);
+        int (MS_ABI *unregister_event)(event_cbk_t callback);
     } event;
 };
 
