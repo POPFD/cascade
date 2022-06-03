@@ -11,6 +11,7 @@
 #include "printf/printf.h"
 #include "arch.h"
 #include "serial.h"
+#include "spinlock.h"
 #include "intrin.h"
 
 /* Size definitions */
@@ -38,13 +39,16 @@
 /* Debug printing */
 static inline void print_buffer(const char *format, ...)
 {
+    static spinlock_t sync_lock = 0;
     va_list marker;
     char tmp_buff[512] = { 0 };
 
+    spin_lock(&sync_lock);
     va_start(marker, format);
     vsnprintf(tmp_buff, sizeof(tmp_buff), format, marker);
     va_end(marker);
     serial_print(tmp_buff);
+    spin_unlock(&sync_lock);
 }
 
 #define debug_print(format, ...) \

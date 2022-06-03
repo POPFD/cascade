@@ -1,5 +1,6 @@
 //#define DEBUG_MODULE
 #include "platform/standard.h"
+#include "platform/spinlock.h"
 #include "platform/intrin.h"
 #include "memory/pmem.h"
 #include "memory/vmem.h"
@@ -42,6 +43,7 @@ struct vmem_ctx {
      */
 
     uintptr_t next_free_addr;
+    spinlock_t sync;
 };
 
 static struct vmem_ctx *m_ctx = NULL;
@@ -190,6 +192,8 @@ void vmem_init(cr3 *original_cr3, cr3 *new_cr3)
     /* Set the next free address in the dynamic allocator. */
     m_ctx->next_free_addr = DYN_VMEM_START;
 
+    spin_init(&m_ctx->sync);
+
     /* Write the new CR3 value so that the memory manager is used. */
     new_cr3->page_level_cache_disable = original_cr3->page_level_cache_disable;
     new_cr3->page_level_write_through = original_cr3->page_level_write_through;
@@ -204,6 +208,7 @@ void *vmem_alloc(size_t size, unsigned int flags)
      * For each of the pages for the address specified from our next
      * free start address create a table entry.
      */
+    spin_lock(&m_ctx->sync);
 
     DEBUG_PRINT("Unaligned size: %ld", size);
     /* Align size to next largest page. */
@@ -232,11 +237,15 @@ void *vmem_alloc(size_t size, unsigned int flags)
            "identity mapped area, we should probably create an algorithm to reuse" \
            "freed memory ranges.");
 
+    spin_unlock(&m_ctx->sync);
+
     return (void *)start_addr;
 }
 
 void vmem_change_perms(void *addr, size_t size, unsigned int flags)
 {
+    spin_lock(&m_ctx->sync);
+
     /* Determine info from flags. */
     bool write = (flags & MEM_WRITE) != 0;
     bool exec = (flags & MEM_EXECUTE) != 0;
@@ -251,6 +260,8 @@ void vmem_change_perms(void *addr, size_t size, unsigned int flags)
 
         modify_entry_perms(curr_addr, write, exec);
     }
+
+    spin_unlock(&m_ctx->sync);
 }
 
 void vmem_free(void *addr, size_t size)

@@ -1,4 +1,5 @@
 #include "platform/standard.h"
+#include "platform/spinlock.h"
 #include "pmem.h"
 
 /*
@@ -44,16 +45,22 @@ static uint8_t __attribute__ ((aligned (PAGE_SIZE))) pmem_region[PMEM_SIZE] = { 
 static size_t pmem_bitmap[PMEM_PAGE_COUNT / NUMBER_BITS_TYPE(size_t)];
 static size_t pmem_last_chunk_idx;
 
+static spinlock_t lock;
+
 void pmem_init(void)
 {
     /* Lets ensure everything is cleared/zero'd. */
     pmem_last_chunk_idx = 0;
     memset(pmem_bitmap, 0, sizeof(pmem_bitmap));
     memset(pmem_region, 0, sizeof(pmem_region));
+
+    spin_init(&lock);
 }
 
 uintptr_t pmem_alloc_page(void)
 {
+    spin_lock(&lock);
+
     /* Start from the last allocated page index
      * and check each bit in the bitmap to find where
      * we can next allocate at. */
@@ -77,6 +84,7 @@ uintptr_t pmem_alloc_page(void)
 
                 uint8_t *result = &pmem_region[offset];
                 memset(result, 0, PAGE_SIZE);
+                spin_unlock(&lock);
                 return (uintptr_t)result;
             }
         }
@@ -85,6 +93,8 @@ uintptr_t pmem_alloc_page(void)
         curr_idx %= ARRAY_SIZE(pmem_bitmap);
     } while (curr_idx != pmem_last_chunk_idx);
 
+
+    spin_unlock(&lock);
     return 0;
 }
 
@@ -99,6 +109,8 @@ uintptr_t pmem_alloc_contiguous(size_t bytes)
     const size_t contiguous_bits = SET_N_BITS(number_pages);
 
     size_t chunk_idx = pmem_last_chunk_idx;
+
+    spin_lock(&lock);
 
     /* Iterate the whole bitmap array and try find some contiguous bits
      * of space we can use. */
@@ -122,6 +134,7 @@ uintptr_t pmem_alloc_contiguous(size_t bytes)
 
                 uint8_t *result = &pmem_region[offset_chunk + offset_bit];
                 memset(result, 0, bytes);
+                spin_unlock(&lock);
                 return (uintptr_t)result;
             } else {
                 chunk_mask >>= 1ull;
@@ -130,6 +143,7 @@ uintptr_t pmem_alloc_contiguous(size_t bytes)
 
     } while (chunk_idx != pmem_last_chunk_idx);
 
+    spin_unlock(&lock);
     return 0;
 }
 
@@ -140,6 +154,8 @@ void pmem_free_page(uintptr_t page)
     assert(page >= (uintptr_t)pmem_region);
     assert(page < (uintptr_t)pmem_region + sizeof(pmem_region));
     assert(!(page & (PAGE_SIZE - 1)));
+
+    spin_lock(&lock);
 
     /* Calculate the page index in the bitmap. */
     size_t offset = page - (uintptr_t)&pmem_region[0];
@@ -156,4 +172,6 @@ void pmem_free_page(uintptr_t page)
 
     /* Clear the bit. */
     pmem_bitmap[array_index] &= ~(1ull << bit_offset);
+
+    spin_unlock(&lock);
 }
