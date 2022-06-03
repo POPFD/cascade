@@ -1,3 +1,4 @@
+//#define DEBUG_MODULE
 #include "platform/standard.h"
 #include "platform/spinlock.h"
 #include "pmem.h"
@@ -44,13 +45,77 @@ static uint8_t __attribute__ ((aligned (PAGE_SIZE))) pmem_region[PMEM_SIZE] = { 
  */
 static size_t pmem_bitmap[PMEM_PAGE_COUNT / NUMBER_BITS_TYPE(size_t)];
 static size_t pmem_last_chunk_idx;
+static size_t pmem_last_bit_idx;
 
 static spinlock_t lock;
+static size_t total_allocated = 0;
+
+static inline bool find_contiguous_unset(size_t count,
+                                         size_t *found_chunk_idx,
+                                         size_t *found_bit_idx)
+{
+    size_t chunk_idx = pmem_last_chunk_idx;
+    size_t bit_idx = pmem_last_bit_idx;
+
+    do {
+
+        size_t curr_count = 0;
+        while (1) {
+
+            /* Check to see if current bit is unsed. */
+            if (!((pmem_bitmap[chunk_idx] >> bit_idx) & 1))
+                curr_count++;
+            else
+                curr_count = 0;
+
+            /* If we have found N contiguous bits return value. */
+            if (curr_count == count) {
+                *found_chunk_idx = chunk_idx;
+                *found_bit_idx = bit_idx;
+                return true;
+            }
+
+            /* Increment the chunk and bit indexes. */
+            bit_idx = (bit_idx + 1) % NUMBER_BITS_TYPE(pmem_bitmap[0]);
+            if (!bit_idx)
+                chunk_idx = (chunk_idx + 1) % ARRAY_SIZE(pmem_bitmap);
+
+            /*
+             * If chunk index has iterated to beginning of bitmap
+             * we must reset current count as overflow cannot count
+             * as contiguous.
+             */
+            if (!chunk_idx && !bit_idx)
+                curr_count = 0;
+        }
+    } while ((chunk_idx != pmem_last_chunk_idx) && (bit_idx != pmem_last_bit_idx));
+
+    return false;
+}
+
+static inline void set_contiguous_bits(size_t chunk_idx, size_t bit_idx, size_t count, bool val)
+{
+    for (size_t i = 0; i < count; i++) {
+        die_on(((pmem_bitmap[chunk_idx] >> bit_idx) & 1) == val,
+               "Bit already set, chunk %d bit %d",
+               chunk_idx, bit_idx);
+
+        if (val)
+            pmem_bitmap[chunk_idx] |= 1ull << bit_idx;
+        else
+            pmem_bitmap[chunk_idx] &= 1ull << bit_idx;
+
+        bit_idx = (bit_idx + 1) % NUMBER_BITS_TYPE(pmem_bitmap[0]);
+        if (!bit_idx)
+            chunk_idx = (chunk_idx + 1) % ARRAY_SIZE(pmem_bitmap);
+    }
+}
 
 void pmem_init(void)
 {
     /* Lets ensure everything is cleared/zero'd. */
     pmem_last_chunk_idx = 0;
+    pmem_last_bit_idx = 0;
     memset(pmem_bitmap, 0, sizeof(pmem_bitmap));
     memset(pmem_region, 0, sizeof(pmem_region));
 
@@ -61,38 +126,28 @@ uintptr_t pmem_alloc_page(void)
 {
     spin_lock(&lock);
 
-    /* Start from the last allocated page index
-     * and check each bit in the bitmap to find where
-     * we can next allocate at. */
-    size_t curr_idx = pmem_last_chunk_idx;
-    do {
-        /* Check each bit in the index to find the next free space */
-        for (size_t bit_index = 0; bit_index < NUMBER_BITS_TYPE(pmem_bitmap[0]); bit_index++) {
+    /* Search for 1 contiguous page in the bitmap that is unset. */
+    size_t chunk_idx;
+    size_t bit_idx;
+    if (find_contiguous_unset(1, &chunk_idx, &bit_idx)) {
+        DEBUG_PRINT("Found chunk %d bit %d", chunk_idx, bit_idx);
 
-            /* If that bit is not set, this means we can use this one. */
-            if (((pmem_bitmap[curr_idx] >> bit_index) & 1) == 0) {
+        /* Indicate that bit & page is now in use. */
+        set_contiguous_bits(chunk_idx, bit_idx, 1, true);
 
-                /* Set the bit to indicate that page is now in use. */
-                pmem_bitmap[curr_idx] |= 1ull << bit_index;
+        /* Update the last index stored to help speed up future allocations. */
+        pmem_last_chunk_idx = chunk_idx;
+        pmem_last_bit_idx = bit_idx;
 
-                /* Update the last index stored to help speed up future allocations. */
-                pmem_last_chunk_idx = curr_idx;
+        /* Calculate & return the allocated page's address. */
+        size_t offset = (chunk_idx * NUMBER_BITS_TYPE(pmem_bitmap[0])) + bit_idx;
+        offset *= PAGE_SIZE;
 
-                /* Calculate & return the allocated page's address. */
-                size_t offset = (curr_idx * NUMBER_BITS_TYPE(pmem_bitmap[0])) + bit_index;
-                offset *= PAGE_SIZE;
-
-                uint8_t *result = &pmem_region[offset];
-                memset(result, 0, PAGE_SIZE);
-                spin_unlock(&lock);
-                return (uintptr_t)result;
-            }
-        }
-
-        curr_idx++;
-        curr_idx %= ARRAY_SIZE(pmem_bitmap);
-    } while (curr_idx != pmem_last_chunk_idx);
-
+        uint8_t *result = &pmem_region[offset];
+        memset(result, 0, PAGE_SIZE);
+        spin_unlock(&lock);
+        return (uintptr_t)result;
+    }
 
     spin_unlock(&lock);
     return 0;
@@ -106,42 +161,31 @@ uintptr_t pmem_alloc_contiguous(size_t bytes)
            bytes);
 
     const size_t number_pages = PAGE_COUNT(bytes);
-    const size_t contiguous_bits = SET_N_BITS(number_pages);
-
-    size_t chunk_idx = pmem_last_chunk_idx;
 
     spin_lock(&lock);
 
-    /* Iterate the whole bitmap array and try find some contiguous bits
-     * of space we can use. */
-    do {
-        size_t chunk_mask = pmem_bitmap[chunk_idx];
+    size_t chunk_idx;
+    size_t bit_idx;
+    if (find_contiguous_unset(number_pages, &chunk_idx, &bit_idx)) {
+        DEBUG_PRINT("Found chunk %d bit %d", chunk_idx, bit_idx);
 
-        for (size_t bit_index = 0; bit_index < NUMBER_BITS_TYPE(pmem_bitmap[0]); bit_index++) {
-        
-            /* Check if the current mask against number of bits to set is clear. */
-            if ((chunk_mask & contiguous_bits) == 0) {
-                
-                /* Set the bits in the bitmask to indicate these are now in use. */
-                pmem_bitmap[chunk_idx] |= (contiguous_bits << bit_index);
+        /* Indicate the following bits are used. */
+        set_contiguous_bits(chunk_idx, bit_idx, number_pages, true);
 
-                /* Store the last chunk in the bitmap we used. */
-                pmem_last_chunk_idx = chunk_idx;
+        /* Update the last index stored to help speed up future allocations. */
+        pmem_last_chunk_idx = chunk_idx;
+        pmem_last_bit_idx = bit_idx;
 
-                /* Calculate the physical address of the buffer. */
-                size_t offset_chunk = (NUMBER_BITS_TYPE(pmem_bitmap[0]) * chunk_idx) * PAGE_SIZE;
-                size_t offset_bit = bit_index * PAGE_SIZE;
+        /* Calculate the physical address of the buffer. */
+        size_t offset_chunk = (NUMBER_BITS_TYPE(pmem_bitmap[0]) * chunk_idx) * PAGE_SIZE;
+        size_t offset_bit = bit_idx * PAGE_SIZE;
 
-                uint8_t *result = &pmem_region[offset_chunk + offset_bit];
-                memset(result, 0, bytes);
-                spin_unlock(&lock);
-                return (uintptr_t)result;
-            } else {
-                chunk_mask >>= 1ull;
-            }
-        }
-
-    } while (chunk_idx != pmem_last_chunk_idx);
+        uint8_t *result = &pmem_region[offset_chunk + offset_bit];
+        memset(result, 0, bytes);
+        spin_unlock(&lock);
+        total_allocated += PAGE_COUNT(bytes) * PAGE_SIZE;
+        return (uintptr_t)result;
+    }
 
     spin_unlock(&lock);
     return 0;
@@ -161,17 +205,9 @@ void pmem_free_page(uintptr_t page)
     size_t offset = page - (uintptr_t)&pmem_region[0];
     size_t full_bit_index = offset / PAGE_SIZE;
 
-    size_t array_index = full_bit_index / NUMBER_BITS_TYPE(pmem_bitmap[0]);
-    size_t bit_offset = full_bit_index % NUMBER_BITS_TYPE(pmem_bitmap[0]);
+    size_t chunk_idx = full_bit_index / NUMBER_BITS_TYPE(pmem_bitmap[0]);
+    size_t bit_idx = full_bit_index % NUMBER_BITS_TYPE(pmem_bitmap[0]);
 
-    /* Assert that the array index is within our pmem bitmap region. */
-    assert(array_index < ARRAY_SIZE(pmem_bitmap));
-
-    /* Assert that the bit is already set. */
-    assert(pmem_bitmap[array_index] & (1ull << bit_offset));
-
-    /* Clear the bit. */
-    pmem_bitmap[array_index] &= ~(1ull << bit_offset);
-
+    set_contiguous_bits(chunk_idx, bit_idx, 1, false);
     spin_unlock(&lock);
 }
