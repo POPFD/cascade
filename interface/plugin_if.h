@@ -1,5 +1,5 @@
-#ifndef CASCADE_IF_H
-#define CASCADE_IF_H
+#ifndef PLUGIN_IF_H
+#define PLUGIN_IF_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -76,4 +76,4 @@ typedef int (MS_ABI *plugin_load_t)(struct vmm_ctx *vmm, const struct plugin_if 
 }
 #endif
 
-#endif /* CASCASE_IF_H */
+#endif /* PLUGIN_IF_H */

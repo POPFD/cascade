@@ -3,6 +3,7 @@
 
 #include "platform/standard.h"
 #include "vmm/vmm_common.h"
+#include "plugin_if.h"
 
 int plugin_load(struct vmm_ctx *vmm, void *guest_raw);
 

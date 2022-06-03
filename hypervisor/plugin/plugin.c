@@ -6,6 +6,12 @@
 #include "plugin.h"
 #include "plugin-shim.h"
 
+struct plugin_info {
+    struct plugin_info *next, *prev;
+    uintptr_t base_address;
+    plugin_load_t load_callback;
+};
+
 static bool check_image(uint8_t *guest_raw,
                         struct image_dos_header *idh,
                         struct image_nt_headers64 *inh)
@@ -174,14 +180,11 @@ static void *get_export_by_name(uint8_t *image, const char *export_name)
     return NULL;
 }
 
-static bool load_image(struct vmm_ctx *vmm,
-                      void *guest_raw,
-                      struct image_nt_headers64 *orig_inh,
-                      plugin_load_t *load_callback)
+static bool load_image(void *guest_raw,
+                       struct image_nt_headers64 *orig_inh,
+                       uintptr_t *image_base,
+                       plugin_load_t *load_callback)
 {
-    (void)vmm;
-    (void)load_callback;
-
     /* 
      * Allocate enough memory within the host for the whole image.
      * Setting specific RO, WR, RX pages is not too important here
@@ -217,11 +220,44 @@ static bool load_image(struct vmm_ctx *vmm,
     plugin_load_t cbk = (plugin_load_t)get_export_by_name(new_image, PLUGIN_LOAD_EXPORT_NAME);
     if (cbk) {
         DEBUG_PRINT("Found load callback at 0x%lX", cbk);
+        *image_base = (uintptr_t)new_image;
         *load_callback = cbk;
         return true;
     }
 
     return false;
+}
+
+static void register_plugin(struct vmm_ctx *vmm, uintptr_t base, plugin_load_t load)
+{
+    /* Ensure only the current vCPU is manipulating the plugin list. */
+    spin_lock(&vmm->lock);
+
+    /* Allocate a new plugin information structure. */
+    struct plugin_info *new_info = vmem_alloc(sizeof(struct plugin_info), MEM_WRITE);
+    die_on(!new_info, "Unable to allocate memory for new plugin info structure.");
+
+    /* Fill out the structure. */
+    new_info->base_address = base;
+    new_info->load_callback = load;
+
+    /* Now manipulated the doubly linked list. */
+    if (vmm->plugin_list) {
+        /* First one to be added so we just set the VMM struct and also
+         * set prev/next accordingly. */
+        vmm->plugin_list = new_info;
+        vmm->plugin_list->prev = new_info;
+        vmm->plugin_list->next = NULL;
+    } else {
+        /* Get the most recent plugin by utilising back pointer from first item. */
+        struct plugin_info *last_info = vmm->plugin_list->prev;
+
+        vmm->plugin_list->prev = new_info;
+        last_info->next = new_info;
+    }
+
+    DEBUG_PRINT("Registered: base 0x%lX load 0x%lX.", base, load);
+    spin_unlock(&vmm->lock);
 }
 
 int plugin_load(struct vmm_ctx *vmm, void *guest_raw)
@@ -244,13 +280,15 @@ int plugin_load(struct vmm_ctx *vmm, void *guest_raw)
      * As the plugin has been loaded into guest memory and DLL_ATTACH called
      * we now need to load it into the host memory and perform relocations.
      */
+    uintptr_t image_base;
     plugin_load_t load_callback;
-    if (!load_image(vmm, guest_raw, &inh, &load_callback)) {
+    if (!load_image(guest_raw, &inh, &image_base, &load_callback)) {
         DEBUG_PRINT("Unable to load plugin image.");
         return -1;
     }
 
-    /* TODO: Register plugin to main VMM plugin list. */
+    /* Register the plugin with the VMM. */
+    register_plugin(vmm, image_base, load_callback);
 
     /* Call export for plugin host init. */
     load_callback(vmm, &PLUGIN_INTERFACE);

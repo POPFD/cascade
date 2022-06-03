@@ -12,7 +12,7 @@
  * That way I can get rid of A LOT of the ms_abi f***ery.
  */
 
-#include "cascade_if.h"
+#include "plugin_if.h"
 #include "platform/standard.h"
 
 static void MS_ABI shim_print(const char *format, ...)

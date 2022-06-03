@@ -656,6 +656,7 @@ void vmm_init(struct vmm_init_params *params)
     static struct vmm_ctx vmm = { 0 };
     memcpy(&vmm.init, params, sizeof(*params));
 
+    spin_init(&vmm.lock);
     vmm.ept = ept_init();
 
     /* Run the initialisation routine on each LP. */

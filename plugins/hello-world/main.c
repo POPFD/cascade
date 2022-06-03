@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <windows.h>
-#include "cascade_if.h"
+#include "plugin_if.h"
 
 __declspec(dllexport) int MS_ABI HypervisorLoad(struct vmm_ctx *vmm, const struct plugin_if *hv_if)
 {

@@ -1,6 +1,7 @@
 #ifndef VMM_COMMON_H
 #define VMM_COMMON_H
 
+#include <linux/types.h>
 #include "platform/intrin.h"
 #include "platform/util.h"
 #include "vmm_reg.h"
@@ -40,6 +41,8 @@ struct cached_interrupt {
 struct vmm_ctx {
     struct vmm_init_params init;
     struct ept_ctx *ept;
+    struct plugin_info *plugin_list;
+    spinlock_t lock;
 };
 
 /* Holds the context specific to a singular vCPU. */
