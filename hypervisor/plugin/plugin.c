@@ -1,4 +1,4 @@
-#define DEBUG_MODULE
+//#define DEBUG_MODULE
 #include "platform/standard.h"
 #include "platform/nt.h"
 #include "memory/mem.h"
@@ -103,18 +103,19 @@ static void relocate_image(uint8_t *new_image)
             /* Only able to relocate DIR64 type. */
             if (type != IMAGE_REL_BASED_DIR64) {
                 /* We can skip absolutes no matter what, no point logging. */
+                #ifdef DEBUG_MODULE
                 if (type != IMAGE_REL_BASED_ABSOLUTE)
                     DEBUG_PRINT("Cannot relocate item of type: 0x%X item_start 0x%lX.",
                                 type, &item_start[i]);
+                #endif /* DEBUG_MODULE */
                 continue;
             }
 
             /* Relocate/rebase the 64 bit address. */
             uint64_t *reloc_addr = (uint64_t *)&block_start[offset];
-            uint64_t orig_value = *reloc_addr;
             *reloc_addr += delta;
             DEBUG_PRINT("Relocated address 0x%lX with original value 0x%lX to 0x%lX.",
-                        reloc_addr, orig_value, *reloc_addr);
+                        reloc_addr, *reloc_addr - delta, *reloc_addr);
         }
 
         /* Go to the new relocation block. */
@@ -256,7 +257,7 @@ static void register_plugin(struct vmm_ctx *vmm, uintptr_t base, plugin_load_t l
         last_info->next = new_info;
     }
 
-    DEBUG_PRINT("Registered: base 0x%lX load 0x%lX.", base, load);
+    debug_print("Registered: base 0x%lX load 0x%lX.", base, load);
     spin_unlock(&vmm->lock);
 }
 
