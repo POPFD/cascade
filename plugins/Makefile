@@ -19,6 +19,7 @@ LDFLAGS := -static \
 # This only searches in the current directory as we don't want plugins
 # to be accidentally included.
 C_FILES := $(shell find . -maxdepth 1 -name '*.c' -o -name '*.cpp')
+C_FILES := $(C_FILES) $(shell find utilities -maxdepth 1 -name '*.c' -o -name '*.cpp')
 OBJ_FILES := $(patsubst %.c, %.o, $(C_FILES))
 OBJ_FILES := $(patsubst %.cpp, %.o, $(OBJ_FILES))
 
