@@ -8,11 +8,15 @@ LD := x86_64-w64-mingw32-ld
 
 CFLAGS := -Wall		\
 	-Werror			\
+	-Wno-error=attributes \
+	-Wno-attributes \
 	-I/usr/share/mingw-w64/include \
+	-I../utilities/ \
 	-I../../interface/ \
 
 LDFLAGS := -static	\
-	-shared
+	-shared \
+	-lntdll
 
 # Use wildcards to gather all of the c files we need to find.
 C_FILES := $(shell find . -name '*.cpp')
