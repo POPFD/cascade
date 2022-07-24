@@ -1,4 +1,4 @@
-//#define DEBUG_MODULE
+#define DEBUG_MODULE
 #include "platform/standard.h"
 #include "platform/intrin.h"
 #include "memory/mem.h"
@@ -6,6 +6,7 @@
 #include "plugin/event.h"
 #include "vmm_common.h"
 #include "vmcall.h"
+#include "nested.h"
 #include "ia32_compact.h"
 
 static void handle_cached_interrupts(struct vcpu_ctx *vcpu)
@@ -370,6 +371,18 @@ static bool handle_sipi(struct vcpu_ctx *vcpu, bool *move_to_next)
     return true;
 }
 
+static bool handle_mov_crx(struct vcpu_ctx *vcpu, bool *move_to_next)
+{
+    /* Check to see if the MOV CRX is relevant to nested. */
+    bool result = nested_mov_crx(vcpu, move_to_next);
+    if (result)
+        return true;
+
+    /* If not do something else (currently nothing as nothing else should trigger). */
+    *move_to_next = false;
+    return false;
+}
+
 static void handle_exit_reason(struct vcpu_ctx *vcpu)
 {
     typedef bool (*fn_exit_handler)(struct vcpu_ctx *vcpu, bool *move_next_instr);
@@ -383,7 +396,8 @@ static void handle_exit_reason(struct vcpu_ctx *vcpu)
         [VMX_EXIT_REASON_MTF] = handle_monitor_trap_flag,
         [VMX_EXIT_REASON_VMCALL] = vmcall_handle,
         [VMX_EXIT_REASON_INIT_SIGNAL] = handle_init_signal,
-        [VMX_EXIT_REASON_SIPI] = handle_sipi
+        [VMX_EXIT_REASON_SIPI] = handle_sipi,
+        [VMX_EXIT_REASON_MOV_CRX] = handle_mov_crx,
     };
 
     /* Determine the exit reason and then call the appropriate exit handler. */

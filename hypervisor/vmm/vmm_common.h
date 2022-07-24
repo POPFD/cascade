@@ -59,6 +59,7 @@ struct vcpu_ctx {
     struct cached_interrupt cached_int;
 
     struct vmm_ctx *vmm;
+    struct nested_vtx *nested;
     size_t idx;
 
     bool running_as_guest;

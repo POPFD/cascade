@@ -17,6 +17,7 @@ struct cpuid_leaf_output {
 #define CPUID_LEAF_READ(leaf, output) __get_cpuid(leaf, &output.eax.flags, &output.ebx.flags, \
                                                    &output.ecx.flags, &output.edx.flags)
 
+/* MSR and IO port handling helpers. */
 static inline uint64_t rdmsr(uint64_t msr)
 {
 	uint32_t low, high;
@@ -52,5 +53,9 @@ static inline uint8_t inb(uint16_t port)
                    : "Nd"(port) );
     return ret;
 }
+
+/* Architecture specific register defines. */
+#define CR4_VMXE_SHIFT 13ull
+#define CR4_VMXE_MASK (1ull << CR4_VMXE_SHIFT)
 
 #endif /* ARCH_H */
