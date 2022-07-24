@@ -383,6 +383,19 @@ static bool handle_mov_crx(struct vcpu_ctx *vcpu, bool *move_to_next)
     return false;
 }
 
+static bool handle_vmxon(struct vcpu_ctx *vcpu, bool *move_to_next)
+{
+#ifdef CONFIG_NESTED
+    return nested_vmxon(vcpu, move_to_next);
+#else
+    static const exception_error_code DEFAULT_EC = { 0 };
+
+    vmm_inject_guest_event(invalid_opcode, DEFAULT_EC);
+    *move_to_next = false;
+    return true;
+#endif
+}
+
 static void handle_exit_reason(struct vcpu_ctx *vcpu)
 {
     typedef bool (*fn_exit_handler)(struct vcpu_ctx *vcpu, bool *move_next_instr);
@@ -398,6 +411,7 @@ static void handle_exit_reason(struct vcpu_ctx *vcpu)
         [VMX_EXIT_REASON_INIT_SIGNAL] = handle_init_signal,
         [VMX_EXIT_REASON_SIPI] = handle_sipi,
         [VMX_EXIT_REASON_MOV_CRX] = handle_mov_crx,
+        [VMX_EXIT_REASON_VMXON] = handle_vmxon,
     };
 
     /* Determine the exit reason and then call the appropriate exit handler. */

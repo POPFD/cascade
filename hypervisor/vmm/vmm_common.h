@@ -59,7 +59,7 @@ struct vcpu_ctx {
     struct cached_interrupt cached_int;
 
     struct vmm_ctx *vmm;
-    struct nested_vtx *nested;
+    struct nested_ctx *nested;
     size_t idx;
 
     bool running_as_guest;
@@ -76,6 +76,40 @@ static inline struct vcpu_ctx *vmm_get_vcpu_ctx(void)
     struct vcpu_ctx *vcpu = (struct vcpu_ctx *)__vmread(VMCS_HOST_GS_BASE);
     die_on(!vcpu, "vCPU context not correct.");
     return vcpu;
+}
+
+static inline size_t vmm_read_gp_register(struct vcpu_ctx *vcpu, uint64_t base_reg)
+{
+    assert(base_reg < 16);
+
+    size_t reg_val;
+    if (base_reg == 4 /* RSP is 4th in array context. */)
+        reg_val = __vmread(VMCS_GUEST_RSP);
+    else {
+        uint64_t *gp_arr = &vcpu->guest_context.rax;
+        reg_val = gp_arr[base_reg];
+    }
+    return reg_val;
+}
+
+static inline size_t vmm_read_seg_register(struct vcpu_ctx *vcpu, uint64_t seg_index)
+{
+    assert(seg_index < 6);
+
+    switch (seg_index) {
+    case 0:
+        return vcpu->guest_context.seg_es;
+    case 1:
+        return vcpu->guest_context.seg_cs;
+    case 2:
+        return vcpu->guest_context.seg_ss;
+    case 3:
+        return vcpu->guest_context.seg_ds;
+    case 4:
+        return vcpu->guest_context.seg_fs;
+    case 5:
+        return vcpu->guest_context.seg_gs;
+    }
 }
 
 static inline void vmm_set_cached_interrupt(exception_vector vector, exception_error_code code)
@@ -119,6 +153,21 @@ static inline void vmm_msr_trap_enable(uint8_t *bitmap, size_t msr, bool trap)
     } else {
         die_on(false, "MSR 0x%lX out of valid range", msr);
     }
+}
+
+static inline uint8_t vmm_virt_addr_bits()
+{
+	return __vmread(VMCS_HOST_CR4) & CR4_LA57_MASK ? 57 : 48;
+}
+
+static inline uint64_t get_canonical(uint64_t la, uint8_t vaddr_bits)
+{
+	return ((int64_t)la << (64 - vaddr_bits)) >> (64 - vaddr_bits);
+}
+
+static inline bool is_noncanonical_address(uint64_t la)
+{
+	return get_canonical(la, vmm_virt_addr_bits()) != la;
 }
 
 void vmm_inject_guest_event(exception_vector vector, exception_error_code code);

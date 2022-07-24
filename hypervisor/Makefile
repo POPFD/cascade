@@ -10,6 +10,8 @@ CC := gcc
 LD := ld
 OC := objcopy
 
+CDEFINES := CONFIG_NESTED
+
 CFLAGS := -fno-stack-protector		\
 	-fshort-wchar					\
 	-mno-sse						\
@@ -23,7 +25,8 @@ CFLAGS := -fno-stack-protector		\
 	-I../interface/					\
 	-I.								\
 	-DEFI_FUNCTION_WRAPPER			\
-	-DPRINTF_DISABLE_SUPPORT_FLOAT
+	-DPRINTF_DISABLE_SUPPORT_FLOAT	\
+	$(addprefix -D, $(CDEFINES))
 
 ASMFLAGS := -f elf64 \
 	-Werror

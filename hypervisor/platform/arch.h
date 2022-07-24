@@ -4,6 +4,16 @@
 #include <stdint.h>
 #include <cpuid.h>
 
+/* Segment indexes. */
+enum seg_idx{
+	SEG_ES = 0,
+	SEG_CS,
+	SEG_SS,
+	SEG_DS,
+	SEG_FS,
+	SEG_GS
+};
+
 /* CPUID ease of use. */
 struct cpuid_leaf_output {
     uint32_t eax;
@@ -57,5 +67,7 @@ static inline uint8_t inb(uint16_t port)
 /* Architecture specific register defines. */
 #define CR4_VMXE_SHIFT 13ull
 #define CR4_VMXE_MASK (1ull << CR4_VMXE_SHIFT)
+#define CR4_LA57_SHIFT 12ull
+#define CR4_LA57_MASK (1ull << CR4_LA57_SHIFT)
 
 #endif /* ARCH_H */

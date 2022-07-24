@@ -36,6 +36,9 @@
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 #define NUMBER_BITS_TYPE(type) (sizeof(type) * 8)
 
+typedef uintptr_t gpa_t;
+typedef uintptr_t hva_t;
+
 /* Debug printing */
 static inline void print_buffer(const char *format, ...)
 {
