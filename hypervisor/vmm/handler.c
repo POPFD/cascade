@@ -128,31 +128,6 @@ static bool handle_invd(struct vcpu_ctx *vcpu, bool *move_to_next)
     return true;
 }
 
-static void set_mtf_trap_enabled(bool enable)
-{
-    ia32_vmx_procbased_ctls_register ctls = { 0 };
-    ctls.flags = __vmread(VMCS_CTRL_PROC_EXEC);
-    ctls.monitor_trap_flag = enable;
-    __vmwrite(VMCS_CTRL_PROC_EXEC, ctls.flags);
-}
-
-static void ignore_next_msr_action(struct vcpu_ctx *vcpu, size_t msr)
-{
-    /* Writes to the MSR bitmap for this vCPU to ignore the MSR temporarily. */
-    vmm_msr_trap_enable(vcpu->msr_trap_bitmap, msr, false);
-    vcpu->last_ignored_msr = msr;
-}
-
-static bool handle_monitor_trap_flag(struct vcpu_ctx *vcpu, bool *move_to_next)
-{
-    /* For re-enable RDMSR/WRMSR traps (see handle_rdmsr/wrmsr) for more details. */
-    set_mtf_trap_enabled(false);
-    vmm_msr_trap_enable(vcpu->msr_trap_bitmap, vcpu->last_ignored_msr, true);
-
-    *move_to_next = false;
-    return true;
-}
-
 static bool handle_rdmsr(struct vcpu_ctx *vcpu, bool *move_to_next)
 {
     static const exception_error_code DEFAULT_EC = { 0 };
@@ -170,14 +145,10 @@ static bool handle_rdmsr(struct vcpu_ctx *vcpu, bool *move_to_next)
 
     /* Check to see if within valid MSR range. */
     if ((msr && (msr <= 0x1FFF)) || ((msr >= 0xC0000000) && (msr <= 0xC0001FFF))) {
-        /* If so, temporarily MSR trap bitmap and enable MTF
-         * we will then allow the vCPU to perform the read (if possible)
-         * and then on the MTF exit we re-enable the trap bitmap. */
         DEBUG_PRINT("Guest attempted to read MSR 0x%lX at rip 0x%lX", msr, vcpu->guest_context.rip);
-        set_mtf_trap_enabled(true);
-        ignore_next_msr_action(vcpu, msr);
+        die_on(true, "Dead");
 
-        *move_to_next = false;
+        *move_to_next = true;
         return true;
     }
 
@@ -206,16 +177,11 @@ static bool handle_wrmsr(struct vcpu_ctx *vcpu, bool *move_to_next)
 
     /* Check to see if within valid MSR range. */
     if ((msr_id && (msr_id <= 0x1FFF)) || ((msr_id >= 0xC0000000) && (msr_id <= 0xC0001FFF))) {
-        /* If so, temporarily MSR trap bitmap and enable MTF
-         * we will then allow the vCPU to perform the write (if possible)
-         * and then on the MTF exit we re-enable the trap bitmap. */
         DEBUG_PRINT("Guest attempted to write MSR 0x%lX val 0x%lX at rip 0x%lX",
                       msr_id, msr_val, vcpu->guest_context.rip);
-        (void)msr_val;
-        set_mtf_trap_enabled(true);
-        ignore_next_msr_action(vcpu, msr_id);
+        die_on(true, "Dead");
 
-        *move_to_next = false;
+        *move_to_next = true;
         return true;
     }
 
@@ -406,7 +372,6 @@ static void handle_exit_reason(struct vcpu_ctx *vcpu)
         [VMX_EXIT_REASON_INVD] = handle_invd,
         [VMX_EXIT_REASON_RDMSR] = handle_rdmsr,
         [VMX_EXIT_REASON_WRMSR] = handle_wrmsr,
-        [VMX_EXIT_REASON_MTF] = handle_monitor_trap_flag,
         [VMX_EXIT_REASON_VMCALL] = vmcall_handle,
         [VMX_EXIT_REASON_INIT_SIGNAL] = handle_init_signal,
         [VMX_EXIT_REASON_SIPI] = handle_sipi,
