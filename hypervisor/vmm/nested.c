@@ -6,6 +6,8 @@
 #include "vmm_common.h"
 #include "nested.h"
 
+#define NESTED_REVISION_ID 0x0000BEEF
+
 struct nested_ctx {
     uint32_t vm_instruction_error;
     gpa_t vmxon_ptr;
@@ -177,6 +179,44 @@ static bool get_vmptr(struct vcpu_ctx *vcpu, gpa_t *vmptr)
     return true;
 }
 
+void nested_init(struct vcpu_ctx *vcpu)
+{
+    /*
+     * Adjust the MSR bitmap to indicate which nested VMX related
+     * MSRs we need to trap on.
+     */
+    vmm_msr_trap_enable(vcpu->msr_trap_bitmap, IA32_VMX_BASIC, true);
+}
+
+bool nested_rdmsr(struct vcpu_ctx *vcpu, size_t msr, size_t *value)
+{
+    (void)vcpu;
+
+    switch (msr) {
+    case IA32_VMX_BASIC:
+        ia32_vmx_basic_register basic = { 0 };
+        basic.vmcs_revision_id = NESTED_REVISION_ID;
+        basic.vmcs_size_in_bytes = PAGE_SIZE;
+        basic.memory_type = MEMORY_TYPE_WB;
+        basic.ins_outs_vmexit_information = true;
+        basic.true_controls = true;
+        *value = basic.flags;
+        break;
+    default:
+        return false;
+    }
+
+    return true;
+}
+
+bool nested_wrmsr(struct vcpu_ctx *vcpu, size_t msr, size_t value)
+{
+    (void)vcpu;
+    (void)msr;
+    (void)value;
+    return false;
+}
+
 bool nested_mov_crx(struct vcpu_ctx *vcpu, bool *move_to_next)
 {
     (void)vcpu;
@@ -239,18 +279,18 @@ bool nested_vmxon(struct vcpu_ctx *vcpu, bool *move_to_next)
 
     /* Verify VMXON VMCS revision ID matches. */
     uint32_t revision = *(uint32_t *)vmptr;
-    ia32_vmx_basic_register basic;
-    basic.flags = rdmsr(IA32_VMX_BASIC);
 
     /*
      * vmptr is a physical address of the guest, as we're identity mapped this is
      * mapped 1:1 into our virtual address space. No need to do conversion from
      * virtual guest to physical host.
      */
-    if (revision != basic.vmcs_revision_id) {
+    if (revision != NESTED_REVISION_ID) {
         DEBUG_PRINT("Guest specified revision 0x%X does not match host supported 0x%X",
-                    revision, basic.vmcs_revision_id);
+                    revision, NESTED_REVISION_ID);
         set_vmx_fail_invalid_flags();
+        *move_to_next = true;
+        return true;
     } else {
         DEBUG_PRINT("Guest vmcs revision 0x%X", revision);
     }

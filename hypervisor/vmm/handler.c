@@ -145,8 +145,16 @@ static bool handle_rdmsr(struct vcpu_ctx *vcpu, bool *move_to_next)
 
     /* Check to see if within valid MSR range. */
     if ((msr && (msr <= 0x1FFF)) || ((msr >= 0xC0000000) && (msr <= 0xC0001FFF))) {
-        DEBUG_PRINT("Guest attempted to read MSR 0x%lX at rip 0x%lX", msr, vcpu->guest_context.rip);
-        die_on(true, "Dead");
+
+        /* Attempt to offload to nested handler. */
+        size_t value;
+        if (!nested_rdmsr(vcpu, msr, &value))
+            die_on(true, "Unhandled MSR read 0x%lX at rip 0x%lX", msr, vcpu->guest_context.rip);
+
+        vcpu->guest_context.rax = (uint32_t)value;
+        vcpu->guest_context.rdx = value >> 32;
+        DEBUG_PRINT("Guest read MSR 0x%lX spoofed value 0x%lX real 0x%lX",
+                    msr, value, rdmsr(msr));
 
         *move_to_next = true;
         return true;
@@ -177,9 +185,13 @@ static bool handle_wrmsr(struct vcpu_ctx *vcpu, bool *move_to_next)
 
     /* Check to see if within valid MSR range. */
     if ((msr_id && (msr_id <= 0x1FFF)) || ((msr_id >= 0xC0000000) && (msr_id <= 0xC0001FFF))) {
-        DEBUG_PRINT("Guest attempted to write MSR 0x%lX val 0x%lX at rip 0x%lX",
-                      msr_id, msr_val, vcpu->guest_context.rip);
-        die_on(true, "Dead");
+
+        /* Attempt to offload to nested handler. */
+        if (!nested_wrmsr(vcpu, msr_id, msr_val))
+            die_on(true, "Unhandled MSR write 0x%lX value at rip 0x%lX",
+                   msr_id, msr_val, vcpu->guest_context.rip);
+
+        DEBUG_PRINT("Guest write MSR 0x%lX value 0x%lX", msr_id, msr_val);
 
         *move_to_next = true;
         return true;

@@ -7,6 +7,7 @@
 #include "memory/mem.h"
 #include "vmm.h"
 #include "ept.h"
+#include "nested.h"
 #include "shim.h"
 #include "ia32_compact.h"
 
@@ -512,7 +513,7 @@ static void setup_vmcs_generic(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
      * reading of drivers etc. */
     cr3 this_cr3;
     this_cr3.flags = __readcr3();
-    //memset(vcpu->msr_trap_bitmap, 0xFF, PAGE_SIZE);
+
     memset(vcpu->msr_trap_bitmap, 0x00, PAGE_SIZE);
     __vmwrite(VMCS_CTRL_MSR_BITMAP, mem_va_to_pa(this_cr3, vcpu->msr_trap_bitmap));
 
@@ -611,6 +612,10 @@ static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
         setup_vmcs_generic(vmm, vcpu);
         setup_vmcs_host(vmm, vcpu);
         setup_vmcs_guest(vmm, vcpu);
+
+        #ifdef CONFIG_NESTED
+            nested_init(vcpu);
+        #endif
 
         /* Attempt VMLAUNCH. */
         DEBUG_PRINT("Attempting VMLAUNCH on vCPU %d with ctx: 0x%lX", proc_idx, vcpu);
