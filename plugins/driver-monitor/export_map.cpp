@@ -94,7 +94,10 @@ export_map::module_record export_map::parse_module(std::string full_path, uintpt
         auto ordinal = ordinal_table[i];
         auto func_rva = func_off_table[ordinal];
 
-        std::cout << "--- " << func_name << " 0x" << std::hex << func_rva << "\n";
+        #ifdef PRINT_EXPORTS
+            std::cout << "--- " << func_name << " 0x" << std::hex << func_rva << "\n";
+        #endif
+
         result.exports.push_back(export_record(func_name, func_rva));
     }
 
