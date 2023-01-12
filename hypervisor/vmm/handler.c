@@ -371,6 +371,7 @@ static bool handle_vmxon(struct vcpu_ctx *vcpu, bool *move_to_next)
 #else
     static const exception_error_code DEFAULT_EC = { 0 };
 
+    (void)vcpu;
     vmm_inject_guest_event(invalid_opcode, DEFAULT_EC);
     *move_to_next = false;
     return true;
