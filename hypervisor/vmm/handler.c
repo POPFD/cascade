@@ -351,12 +351,15 @@ static bool handle_sipi(struct vcpu_ctx *vcpu, bool *move_to_next)
 
 static bool handle_mov_crx(struct vcpu_ctx *vcpu, bool *move_to_next)
 {
+#ifdef CONFIG_NESTED
     /* Check to see if the MOV CRX is relevant to nested. */
     bool result = nested_mov_crx(vcpu, move_to_next);
     if (result)
         return true;
+#endif
 
-    /* If not do something else (currently nothing as nothing else should trigger). */
+    /* Currently if this happens, we haven't implemented it, something is not right. */
+    (void)vcpu;
     *move_to_next = false;
     return false;
 }
