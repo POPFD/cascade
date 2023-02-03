@@ -446,14 +446,14 @@ static void setup_vmcs_guest(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
     __vmwrite(VMCS_CTRL_CR3_TARGET_COUNT, 0);
     __vmwrite(VMCS_GUEST_CR3, vmm->init.guest_cr3.flags);
 
-    /* Set the guest/host mask and a shadow, this is used to hide
-     * the fact that VMXE bit in CR4 is set.
+    /* 
+     * If a bit is set in the CR4 guest/host mask, this means that
+     * the value from the CR4 shadow will be utilised when in guest
+     * mode/non-root mode.
      *
-     * Setting a bit to 1 ensures that the bit is host owned,
-     * meaning that the value will be read from the shadow register.
-     *
-     * Setting a bit to 0 ensures that the bit is guest owned,
-     * meaning that the actual value will be read.
+     * As such here, we indicate the VMXE bit in CR4 is set to be intercepted
+     * and therefore we then indicate that VMXE is not indicated by clearing
+     * the VMXE bit in the CR4 read shadow.
      */
     __vmwrite(VMCS_CTRL_CR4_MASK, CR4_VMXE_MASK);
     __vmwrite(VMCS_CTRL_CR4_READ_SHADOW, vcpu->guest_ctrl_regs.reg_cr4.flags & ~CR4_VMXE_MASK);
