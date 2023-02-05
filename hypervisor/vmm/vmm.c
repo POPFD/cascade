@@ -566,6 +566,27 @@ static void setup_vmcs_generic(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
     __vmwrite(VMCS_CTRL_ENTRY, encoded);
 }
 
+static void hook_init_root_mode(struct vcpu_ctx *vcpu)
+{
+    /*
+     * A hook into where we're running as ROOT/HOST mode
+     * this can be used for initialising other application
+     * specific logic as required.
+     */
+    (void)vcpu;
+
+    /* We CANNOT enable the memory hider at this point.
+     * Otherwise when we do a VMLAUNCH and hyperjack back
+     * into our driver we'll get a EPT violation.
+     *
+     * So, we should add a VMCALL routine to enable the
+     * hiding. This unfortunately will have to be triggered
+     * by a seperate module (plugin or UM process) as due
+     * to the reason mentioned above, we cannot hide our own
+     * memory when we need to execute from it in guest mode
+     * still. */
+}
+
 static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
 {
     struct vmm_ctx *vmm = (struct vmm_ctx *)opaque;
@@ -616,6 +637,10 @@ static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
         #ifdef CONFIG_NESTED
             nested_init(vcpu);
         #endif
+
+        /* Hook for when running as ROOT mode but we have not
+         * yet launched back into non-root/GUEST. */
+        hook_init_root_mode(vcpu);
 
         /* Attempt VMLAUNCH. */
         DEBUG_PRINT("Attempting VMLAUNCH on vCPU %d with ctx: 0x%lX", proc_idx, vcpu);
