@@ -19,6 +19,7 @@ global __ltr
 global __xsetbv
 global __invd
 global __invlpg
+global __invept
 global __vmxon
 global __vmclear
 global __vmptrld
@@ -107,6 +108,10 @@ __invd:
 
 __invlpg:
     invlpg [rcx]
+    ret
+
+__invept:
+    invept rcx, [rdx]
     ret
 
 __vmxon:

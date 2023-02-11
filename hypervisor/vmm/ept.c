@@ -1,9 +1,11 @@
 #define DEBUG_MODULE
+#include <errno.h>
 #include "platform/standard.h"
 #include "platform/intrin.h"
 #include "memory/vmem.h"
 #include "memory/mem.h"
 #include "ept.h"
+#include "ia32_compact.h"
 
 #define ENTRIES_PER_TABLE 512
 
@@ -30,6 +32,14 @@ struct ept_ctx {
     /* List of MTRR data, not all may be valid as each processor arch
      * can vary depending on the amount of MTRRs implemented. */
     struct mtrr_data mtrr[IA32_MTRR_COUNT];
+};
+
+struct ept_split_page {
+    /* The PML1E/EPT_PTE table. */
+    __attribute__((aligned(PAGE_SIZE))) ept_pte pml1[ENTRIES_PER_TABLE];
+
+    /* A back reference to the PML2 entry which this was created for. */
+    ept_pde_2mb *pml2e_ref;
 };
 
 static void gather_mtrr_list(struct ept_ctx *ctx)
@@ -84,6 +94,62 @@ static uint32_t adjust_memory_type(struct ept_ctx *ctx, uintptr_t addr, uint32_t
 
     /* If not in MTRR list, return desired. */
     return type;
+}
+
+static void ept_split_large_page(struct ept_ctx *ctx, uintptr_t phys_addr)
+{
+    /* Attempt to get the PML2E for the physical address specified. */
+    ept_pde_2mb *target_pml2e = get_ept_pml2e(ctx, phys_addr);
+    die_on(!target_pml2e, "Invalid PML2E for addr 0x%lX", phys_addr);
+    
+    /* If the large page bit isn't set, this means already split. */
+    if (!target_pml2e->large_page)
+        return;
+
+    struct ept_split_page *new_split = vmem_alloc(sizeof(struct ept_split_page), MEM_WRITE);
+    die_on(!new_split, "Unable to allocate memory for split page, phys_addr 0x%lX", phys_addr);
+
+    /* Store the back reference to the PML2E */
+    new_split->pml2e_ref = target_pml2e;
+
+    /* Now create a stub/template PML1E with default params. */
+    ept_pte temp_pte = {
+        .read_access = true,
+        .write_access = true,
+        .execute_access = true,
+        .memory_type = target_pml2e->memory_type,
+        .ignore_pat = target_pml2e->ignore_pat,
+        .suppress_ve = target_pml2e->suppress_ve
+    };
+
+    /* Calculate the physical address of the original PML2 entry.
+     * and the page frame number, we will use this as base. */
+    uintptr_t base_pml2e = target_pml2e->page_frame_number * MiB(2);
+    uintptr_t base_pfn = base_pml2e / PAGE_SIZE;
+
+    /* Now fill out all the new PML1E's for the table.
+     * Use the template PTE for the general flags,
+     * but we will also need to update the PFN.
+     * As we have calculated the original PFN for the PML2E we can
+     * we can just add one page for each entry. */
+    for (int i = 0; i < ENTRIES_PER_TABLE; i++) {
+        new_split->pml1[i] = temp_pte;
+        new_split->pml1[i].page_frame_number = base_pfn + i;
+    }
+
+    /* Now create a new PML2E entry to replace the old one. */
+    cr3 this_cr3;
+    this_cr3.flags = __readcr3();
+
+    uintptr_t phys_pml1e = mem_va_to_pa(this_cr3, &new_split->pml1[0]);
+
+    ept_pde new_pde = {
+        .read_access = true,
+        .write_access = true,
+        .execute_access = true,
+        .page_frame_number = (phys_pml1e / PAGE_SIZE)
+    };
+    target_pml2e->flags = new_pde.flags;
 }
 
 struct ept_ctx *ept_init(void)
@@ -143,13 +209,53 @@ struct ept_ctx *ept_init(void)
         }
     }
 
-    /* Change to RO just to double check nothing is overwriting to our EPT context. */
-    vmem_change_perms(ctx, sizeof(struct ept_ctx), 0);
-
     return ctx;
 }
 
 eptp *ept_get_pointer(struct ept_ctx *ctx)
 {
     return &ctx->ept_ptr;
+}
+
+ept_pde_2mb *get_ept_pml2e(struct ept_ctx *ctx, uintptr_t phys_addr)
+{
+    uint64_t pml4_idx = ADDRMASK_EPT_PML4_INDEX(phys_addr);
+    die_on(pml4_idx, "Cannot support PML4E[%d] above 0 (512GiB)", pml4_idx);
+
+    uint64_t pml3_idx = ADDRMASK_EPT_PML3_INDEX(phys_addr);
+    uint64_t pml2_idx = ADDRMASK_EPT_PML2_INDEX(phys_addr);
+    return &ctx->pml2[pml3_idx][pml2_idx];
+}
+
+ept_pte *ept_get_pml1e(struct ept_ctx *ctx, uintptr_t phys_addr)
+{
+    /* First get the PML2E.
+     * If the current page is a large page (2MiB) then we
+     * should proceed with splitting this PML2E into standard
+     * pages. From there we can then return that value. */
+    ept_pde_2mb *target_pml2e_2mb = get_ept_pml2e(ctx, phys_addr);
+    die_on(!target_pml2e_2mb, "Invalid PML2E for addr 0x%lX", phys_addr);
+
+    if (target_pml2e_2mb->large_page) {
+        /* Split the page, and then ensure we invalidate and flush the
+         * EPT cache. */
+        ept_split_large_page(ctx, phys_addr);
+        ept_invalidate_and_flush(ctx);
+    }
+
+    /* Now re-cast the PML2E/PDE as it should be split,
+     * then we can just return the correct value. */
+    ept_pde *target_pml2e = (ept_pde *)target_pml2e_2mb;
+
+    ept_pte *pml1_table = (ept_pte *)((uintptr_t)target_pml2e->page_frame_number * PAGE_SIZE);
+    return &pml1_table[ADDRMASK_EPT_PML1_INDEX(phys_addr)];
+}
+
+void ept_invalidate_and_flush(struct ept_ctx *ctx)
+{
+    invept_descriptor desc = {
+        .ept_pointer = ctx->ept_ptr.flags,
+        .reserved = 0
+    };
+    __invept(invvpid_all_context, &desc);
 }

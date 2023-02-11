@@ -22,6 +22,7 @@ extern __attribute__((ms_abi)) void __ltr(void *tr);
 extern __attribute__((ms_abi)) void __xsetbv(uint64_t field, uint64_t val);
 extern __attribute__((ms_abi)) void __invd(void);
 extern __attribute__((ms_abi)) void __invlpg(uintptr_t *addr);
+extern __attribute__((ms_abi)) void __invept(uint64_t ext, void *addr);
 extern __attribute__((ms_abi)) int __vmxon(void *vmxon);
 extern __attribute__((ms_abi)) int __vmclear(void *vmcs);
 extern __attribute__((ms_abi)) int __vmptrld(void *vmcs);
