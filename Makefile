@@ -15,7 +15,7 @@ export BUILDDIR
 .PHONY: all
 all: prep_dirs
 	$(MAKE) -C hypervisor
-	$(MAKE) -C plugins
+	$(MAKE) -C usermode
 
 # Configuration that creates directories needed
 prep_dirs:
