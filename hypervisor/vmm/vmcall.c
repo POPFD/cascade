@@ -3,6 +3,7 @@
 #include "platform/intrin.h"
 #include "memory/mem.h"
 #include "plugin/plugin.h"
+#include "app/mem_hide.h"
 #include "vmcall.h"
 #include "vmcall_if.h"
 #include "vmm_common.h"
@@ -42,6 +43,18 @@ static size_t handle_load_plugin(struct vcpu_ctx *vcpu, struct vmcall_param *hos
     return plugin_load(vcpu->vmm, plugin_param.plugin);
 }
 
+static size_t handle_mem_hide(struct vcpu_ctx *ctx, struct vmcall_param *host_param)
+{
+    /* Memory hide takes no parameters. */
+    (void)host_param;
+
+    /* Simple call to the memory hiding module for init.
+     * This CANNOT fail, therefore we return always success. */
+    DEBUG_PRINT("Hiding hypervisor memory.");
+    mem_hide_init(ctx->vmm);
+    return 0;
+}
+
 bool vmcall_handle(struct vcpu_ctx *vcpu, bool *move_to_next)
 {
     typedef size_t (*fn_vmcall_handler)(struct vcpu_ctx *vcpu, struct vmcall_param *host_param);
@@ -49,7 +62,8 @@ bool vmcall_handle(struct vcpu_ctx *vcpu, bool *move_to_next)
     static const exception_error_code DEFAULT_EC = { 0 };
     static const fn_vmcall_handler VMCALL_HANDLERS[] = {
         [ACTION_CHECK_PRESENCE] = handle_check_presence,
-        [ACTION_LOAD_PLUGIN] = handle_load_plugin
+        [ACTION_LOAD_PLUGIN] = handle_load_plugin,
+        [ACTION_HIDE_HV_MEM] = handle_mem_hide
     };
 
     /*
