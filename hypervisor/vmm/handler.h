@@ -3,7 +3,7 @@
 
 #include "platform/standard.h"
 
-typedef void (*exit_cbk_t)(void *opaque, bool *move_to_next);
+typedef void (*exit_cbk_t)(struct vcpu_ctx *vcpu, void *opaque, bool *move_to_next);
 
 struct handler_ctx *handler_init(void);
 void handler_register_exit(struct handler_ctx *ctx,

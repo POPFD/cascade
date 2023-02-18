@@ -3,10 +3,7 @@
 #include "memory/mem.h"
 #include "memory/vmem.h"
 #include "interrupt/idt.h"
-#include "plugin/event.h"
 #include "vmm_common.h"
-#include "vmcall.h"
-#include "nested.h"
 #include "handler.h"
 #include "ia32_compact.h"
 
@@ -52,7 +49,7 @@ static void handle_cached_interrupts(struct vcpu_ctx *vcpu)
     }
 }
 
-static bool handle_cpuid(struct vcpu_ctx *vcpu, bool *move_to_next)
+static void handle_cpuid(struct vcpu_ctx *vcpu, void *opaque, bool *move_to_next)
 {
     /* Override leafs. */
     #define HYPERV_CPUID_VENDOR_AND_MAX_FUNCTIONS 0x40000000
@@ -60,6 +57,8 @@ static bool handle_cpuid(struct vcpu_ctx *vcpu, bool *move_to_next)
 
     /* Bitmasks in certain leafs. */
     static const size_t CPUID_VI_BIT_HYPERVISOR_PRESENT = 0x80000000;
+
+    (void)opaque;
 
     /* Read the CPUID into the leafs array. */
     uint64_t leaf = vcpu->guest_context.rax;
@@ -98,12 +97,13 @@ static bool handle_cpuid(struct vcpu_ctx *vcpu, bool *move_to_next)
     vcpu->guest_context.rcx = out_regs[2];
     vcpu->guest_context.rdx = out_regs[3];
     *move_to_next = true;
-    return true;
 }
 
-static bool handle_xsetbv(struct vcpu_ctx *vcpu, bool *move_to_next)
+static void handle_xsetbv(struct vcpu_ctx *vcpu, void *opaque, bool *move_to_next)
 {
     static const exception_error_code DEFAULT_EC = { 0 };
+
+    (void)opaque;
 
     /* Check to ensure that os_xsave is enabled. */
     cr4 guest_cr4;
@@ -112,7 +112,7 @@ static bool handle_xsetbv(struct vcpu_ctx *vcpu, bool *move_to_next)
         DEBUG_PRINT("XSETBV when CR4.os_xsave not set");
         vmm_inject_guest_event(invalid_opcode, DEFAULT_EC);
         *move_to_next = false;
-        return true;
+        return;
     }
 
     /* Check that a valid XCR index is set (only 0 supported). */
@@ -121,7 +121,7 @@ static bool handle_xsetbv(struct vcpu_ctx *vcpu, bool *move_to_next)
         DEBUG_PRINT("XSETBV invalid XCR field 0x%X", field);
         vmm_inject_guest_event(general_protection, DEFAULT_EC);
         *move_to_next = false;
-        return true;
+        return;
     }
 
     /*
@@ -140,106 +140,32 @@ static bool handle_xsetbv(struct vcpu_ctx *vcpu, bool *move_to_next)
     __xsetbv(field, value);
     
     *move_to_next = true;
-    return true;
 }
 
-static bool handle_invd(struct vcpu_ctx *vcpu, bool *move_to_next)
+static void handle_invd(struct vcpu_ctx *vcpu, void *opaque, bool *move_to_next)
 {
     (void)vcpu;
-    
+    (void)opaque;
+
     DEBUG_PRINT("INVD");
     __invd();
     *move_to_next = true;
-    return true;
 }
 
-static bool handle_rdmsr(struct vcpu_ctx *vcpu, bool *move_to_next)
-{
-    static const exception_error_code DEFAULT_EC = { 0 };
-    size_t msr = (uint32_t)vcpu->guest_context.rcx;
-
-    /* Check to see if valid RPL to perform the read. */
-    segment_selector cs;
-    cs.flags = __vmread(VMCS_GUEST_CS_SEL);
-    if (cs.request_privilege_level != 0) {
-        DEBUG_PRINT("RDMSR 0x%lX wrong RPL 0x%X", msr, cs.request_privilege_level);
-        vmm_inject_guest_event(general_protection, DEFAULT_EC);
-        *move_to_next = false;
-        return true;
-    }
-
-    /* Check to see if within valid MSR range. */
-    if ((msr && (msr <= 0x1FFF)) || ((msr >= 0xC0000000) && (msr <= 0xC0001FFF))) {
-
-        /* Attempt to offload to nested handler. */
-        size_t value;
-        if (!nested_rdmsr(vcpu, msr, &value))
-            die_on(true, "Unhandled MSR read 0x%lX at rip 0x%lX", msr, vcpu->guest_context.rip);
-
-        vcpu->guest_context.rax = (uint32_t)value;
-        vcpu->guest_context.rdx = value >> 32;
-        DEBUG_PRINT("Guest read MSR 0x%lX spoofed value 0x%lX real 0x%lX",
-                    msr, value, rdmsr(msr));
-
-        *move_to_next = true;
-        return true;
-    }
-
-    /* Invalid MSR which is out of range. */
-    DEBUG_PRINT("RDMSR 0x%lX out of range", msr);
-    vmm_inject_guest_event(general_protection, DEFAULT_EC);
-    *move_to_next = false;
-    return true;
-}
-
-static bool handle_wrmsr(struct vcpu_ctx *vcpu, bool *move_to_next)
-{
-    static const exception_error_code DEFAULT_EC = { 0 };
-    size_t msr_id = (uint32_t)vcpu->guest_context.rcx;
-    size_t msr_val = (vcpu->guest_context.rdx << 32) | (uint32_t)vcpu->guest_context.rax;
-
-    /* Check to see if valid RPL to perform the read. */
-    segment_selector cs;
-    cs.flags = __vmread(VMCS_GUEST_CS_SEL);
-    if (cs.request_privilege_level != 0) {
-        DEBUG_PRINT("WRMSR 0x%lX 0x%lX wrong RPL 0x%X", msr_id, msr_val, cs.request_privilege_level);
-        vmm_inject_guest_event(general_protection, DEFAULT_EC);
-        *move_to_next = false;
-        return true;
-    }
-
-    /* Check to see if within valid MSR range. */
-    if ((msr_id && (msr_id <= 0x1FFF)) || ((msr_id >= 0xC0000000) && (msr_id <= 0xC0001FFF))) {
-
-        /* Attempt to offload to nested handler. */
-        if (!nested_wrmsr(vcpu, msr_id, msr_val))
-            die_on(true, "Unhandled MSR write 0x%lX value at rip 0x%lX",
-                   msr_id, msr_val, vcpu->guest_context.rip);
-
-        DEBUG_PRINT("Guest write MSR 0x%lX value 0x%lX", msr_id, msr_val);
-
-        *move_to_next = true;
-        return true;
-    }
-
-    /* Invalid MSR which is out of range. */
-    DEBUG_PRINT("WRMSR 0x%lX 0x%lX out of range", msr_id, msr_val);
-    vmm_inject_guest_event(general_protection, DEFAULT_EC);
-    *move_to_next = false;
-    return true;
-}
-
-static bool handle_init_signal(struct vcpu_ctx *vcpu, bool *move_to_next)
+static void handle_init_signal(struct vcpu_ctx *vcpu, void *opaque, bool *move_to_next)
 {
     (void)vcpu;
+    (void)opaque;
+
     __vmwrite(VMCS_GUEST_ACTIVITY_STATE, vmx_wait_for_sipi);
     *move_to_next = false;
-    return true;
 }
 
-static bool handle_sipi(struct vcpu_ctx *vcpu, bool *move_to_next)
+static void handle_sipi(struct vcpu_ctx *vcpu, void *opaque, bool *move_to_next)
 {
 #define SEGMENT_LIMIT_DEFAULT 0xFFFF
+
+    (void)opaque;
 
 	/* Use the exit qualification to gather the SIPI vector.
 	 * Only bits 7:0 contain the vector, the rest are zero'd. */
@@ -371,80 +297,43 @@ static bool handle_sipi(struct vcpu_ctx *vcpu, bool *move_to_next)
     vcpu->guest_context.r15 = 0;
 
     *move_to_next = false;
-    return true;
-}
-
-static bool handle_mov_crx(struct vcpu_ctx *vcpu, bool *move_to_next)
-{
-#ifdef CONFIG_NESTED
-    /* Check to see if the MOV CRX is relevant to nested. */
-    bool result = nested_mov_crx(vcpu, move_to_next);
-    if (result)
-        return true;
-#endif
-
-    /* Currently if this happens, we haven't implemented it, something is not right. */
-    (void)vcpu;
-    *move_to_next = false;
-    return false;
-}
-
-static bool handle_vmxon(struct vcpu_ctx *vcpu, bool *move_to_next)
-{
-#ifdef CONFIG_NESTED
-    return nested_vmxon(vcpu, move_to_next);
-#else
-    static const exception_error_code DEFAULT_EC = { 0 };
-
-    (void)vcpu;
-    vmm_inject_guest_event(invalid_opcode, DEFAULT_EC);
-    *move_to_next = false;
-    return true;
-#endif
 }
 
 static void handle_exit_reason(struct vcpu_ctx *vcpu)
 {
-    typedef bool (*fn_exit_handler)(struct vcpu_ctx *vcpu, bool *move_next_instr);
-
-    static const fn_exit_handler EXIT_HANDLERS[] = {
-        [VMX_EXIT_REASON_CPUID] = handle_cpuid,
-        [VMX_EXIT_REASON_XSETBV] = handle_xsetbv,
-        [VMX_EXIT_REASON_INVD] = handle_invd,
-        [VMX_EXIT_REASON_RDMSR] = handle_rdmsr,
-        [VMX_EXIT_REASON_WRMSR] = handle_wrmsr,
-        [VMX_EXIT_REASON_VMCALL] = vmcall_handle,
-        [VMX_EXIT_REASON_INIT_SIGNAL] = handle_init_signal,
-        [VMX_EXIT_REASON_SIPI] = handle_sipi,
-        [VMX_EXIT_REASON_MOV_CRX] = handle_mov_crx,
-        [VMX_EXIT_REASON_VMXON] = handle_vmxon,
-    };
+    /* Retrieve the handler context from the vCPU. */
+    struct handler_ctx *ctx = vcpu->vmm->handler;
 
     /* Determine the exit reason and then call the appropriate exit handler. */
     size_t reason = __vmread(VMCS_EXIT_REASON) & 0xFFFF;
-    bool success;
     bool move_to_next_instr = false;
 
-    /* Check to see if the exit is to be handled by a plugin, if so
-     * we can do nothing. */
-    success = plugin_handle_event(vcpu, reason, &move_to_next_instr);
-    if (!success) {
-        /* If not handled by plugin we should do it here. */
-        die_on(reason >= ARRAY_SIZE(EXIT_HANDLERS),
-            "Exit reason 0x%lX rip 0x%lX not within range of handler table",
-            reason, vcpu->guest_context.rip);
+    /* Check to see if the exit reason is out of range. */
+    die_on(reason >= MAX_EXIT_HANDLERS,
+        "Exit reason 0x%lX rip 0x%lX not within range of handler table",
+        reason, vcpu->guest_context.rip);
 
-        die_on(!EXIT_HANDLERS[reason],
-            "Exit reason 0x%lX rip 0x%lX not declared in handler table",
-            reason, vcpu->guest_context.rip);
+    struct vmexit_handler *exit_head = ctx->handlers[reason];
 
-        success = EXIT_HANDLERS[reason](vcpu, &move_to_next_instr);
-    }
+    /* Check to see if we actually have a handler for it. */
+    die_on(!exit_head, "No exit reason handlers for 0x%lX at rip 0x%lX present",
+           reason, vcpu->guest_context.rip);
 
-    size_t qual = __vmread(VMCS_EXIT_QUALIFICATION);
-    die_on(!success,
-           "Exit handler for 0x%lX rip 0x%lX failed with exit qualification 0x%lX",
-           reason, vcpu->guest_context.rip, qual);
+    /* Iterate from tail to head calling each, stop at override. */
+    struct vmexit_handler *curr_handler = exit_head->prev;
+    while (true) {
+        /* Call the callback for the VMEXIT. If this handler has the override
+         * set, this means we SHOULDN'T call any others, so break. */
+        curr_handler->callback(vcpu, curr_handler->opaque, &move_to_next_instr);
+    
+        if (curr_handler->override)
+            break;
+
+        if (curr_handler == exit_head)
+            break;
+        
+        curr_handler = curr_handler->prev;
+    };
 
     /*
      * If the exit handler indicated to increment RIP, do so.
@@ -463,8 +352,24 @@ static void handle_exit_reason(struct vcpu_ctx *vcpu)
 
 static void register_generic_handlers(struct handler_ctx *ctx)
 {
-    (void)ctx;
-    /* TODO: Lock using VMM lock, register handler, unlock. */
+    static const exit_cbk_t GENERIC_HANDLERS[] = {
+        [VMX_EXIT_REASON_CPUID] = handle_cpuid,
+        [VMX_EXIT_REASON_XSETBV] = handle_xsetbv,
+        [VMX_EXIT_REASON_INVD] = handle_invd,
+        [VMX_EXIT_REASON_INIT_SIGNAL] = handle_init_signal,
+        [VMX_EXIT_REASON_SIPI] = handle_sipi,
+    };
+
+    /* Register all of our generic handlers
+     * This is done by iterating a key/value array of exit to internal handlers. */
+    for (int exit_reason = 0; exit_reason < MAX_EXIT_HANDLERS; exit_reason++) {
+        exit_cbk_t cbk = GENERIC_HANDLERS[exit_reason];
+
+        if (cbk) {
+            DEBUG_PRINT("Registering generic exit 0x%lX callback 0x%lX", exit_reason, cbk);
+            handler_register_exit(ctx, exit_reason, cbk, NULL, false);
+        }
+    }
 }
 
 struct handler_ctx *handler_init(void)
