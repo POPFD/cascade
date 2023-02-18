@@ -686,7 +686,8 @@ void vmm_init(struct vmm_init_params *params)
 
     spin_init(&vmm.lock);
     vmm.ept = ept_init();
-    vmm.handler = handler_init();
+
+    handler_init(&vmm);
 
     /* Run the initialisation routine on each LP. */
     efi_plat_run_all_processors(init_routine_per_vcpu, &vmm);

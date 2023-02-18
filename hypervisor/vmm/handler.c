@@ -11,7 +11,7 @@ struct vmexit_handler {
     /* Doubly linked list so multiple exit handlers can be daisy chained. */
     struct vmexit_handler *next, *prev;
     /* The callback for the exit to be called. */
-    exit_cbk_t callback;
+    vmexit_cbk_t callback;
     /* Callback specific data. */
     void *opaque;
     /* If called, prevent other daisy chained callbacks from being called. */
@@ -352,7 +352,7 @@ static void handle_exit_reason(struct vcpu_ctx *vcpu)
 
 static void register_generic_handlers(struct handler_ctx *ctx)
 {
-    static const exit_cbk_t GENERIC_HANDLERS[] = {
+    static const vmexit_cbk_t GENERIC_HANDLERS[] = {
         [VMX_EXIT_REASON_CPUID] = handle_cpuid,
         [VMX_EXIT_REASON_XSETBV] = handle_xsetbv,
         [VMX_EXIT_REASON_INVD] = handle_invd,
@@ -363,7 +363,7 @@ static void register_generic_handlers(struct handler_ctx *ctx)
     /* Register all of our generic handlers
      * This is done by iterating a key/value array of exit to internal handlers. */
     for (int exit_reason = 0; exit_reason < MAX_EXIT_HANDLERS; exit_reason++) {
-        exit_cbk_t cbk = GENERIC_HANDLERS[exit_reason];
+        vmexit_cbk_t cbk = GENERIC_HANDLERS[exit_reason];
 
         if (cbk) {
             DEBUG_PRINT("Registering generic exit 0x%lX callback 0x%lX", exit_reason, cbk);
@@ -372,10 +372,12 @@ static void register_generic_handlers(struct handler_ctx *ctx)
     }
 }
 
-struct handler_ctx *handler_init(void)
+struct handler_ctx *handler_init(struct vmm_ctx *vmm)
 {
     struct handler_ctx *ctx = vmem_alloc(sizeof(struct handler_ctx), MEM_WRITE);
     die_on(!ctx, "Unable to allocate context for VMEXIT handlers.");
+    vmm->handler = ctx;
+    ctx->vmm = vmm;
 
     register_generic_handlers(ctx);
     return ctx;
@@ -383,7 +385,7 @@ struct handler_ctx *handler_init(void)
 
 void handler_register_exit(struct handler_ctx *ctx,
                            size_t exit_reason,
-                           exit_cbk_t callback,
+                           vmexit_cbk_t callback,
                            void *opaque,
                            bool override)
 {

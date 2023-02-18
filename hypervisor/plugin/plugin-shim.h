@@ -16,7 +16,7 @@
 #include "platform/standard.h"
 #include "memory/pmem.h"
 #include "memory/vmem.h"
-#include "plugin/event.h"
+#include "vmm/handler.h"
 
 static void MS_ABI shim_print(const char *format, ...)
 {
@@ -41,17 +41,13 @@ static void MS_ABI shim_phys_free_page(uintptr_t page)
     return pmem_free_page(page);
 }
 
-static void MS_ABI shim_plugin_event_reg(struct vmm_ctx *vmm,
-                                         size_t exit_reason,
-                                         event_cbk_t cbk,
-                                         void *opaque)
+static void MS_ABI shim_handler_register_exit(struct handler_ctx *ctx,
+                                              size_t exit_reason,
+                                              vmexit_cbk_t callback,
+                                              void *opaque,
+                                              bool override)
 {
-    plugin_event_register(vmm, exit_reason, cbk, opaque);
-}
-
-static void MS_ABI shim_plugin_event_unreg(struct vmm_ctx *vmm, event_cbk_t cbk)
-{
-    plugin_event_unregister(vmm, cbk);
+    handler_register_exit(ctx, exit_reason, callback, opaque, override);
 }
 
 static void *MS_ABI shim_virt_alloc(size_t size, bool write, bool exec)
@@ -80,9 +76,8 @@ static const struct plugin_if PLUGIN_INTERFACE = {
             .alloc = shim_virt_alloc
         }
     },
-    .event = {
-        .register_event = shim_plugin_event_reg,
-        .unregister_event = shim_plugin_event_unreg
+    .handler = {
+        .register_exit = shim_handler_register_exit
     }
 };
 

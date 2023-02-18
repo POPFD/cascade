@@ -25,14 +25,12 @@ extern "C" {
 
 typedef struct vmm_ctx *vmm_ctx_t;
 typedef struct vcpu_ctx *vcpu_ctx_t;
+typedef struct handler_ctx *handler_ctx_t;
+
+#include "handler_common.h"
 
 /* Definition of the ABI used for structure. */
 #define MS_ABI __attribute__((ms_abi))
-
-/* Callback to take place from a specific event. */
-typedef bool (MS_ABI *event_cbk_t)(struct vcpu_ctx *vcpu,
-                                   void *opaque,
-                                   bool *move_to_next);
 
 struct plugin_if {
     uint8_t version;
@@ -64,13 +62,12 @@ struct plugin_if {
     } mem;
 
     struct {
-        /* Register an event handler for a specific VMEXIT. */
-        void (MS_ABI *register_event)(struct vmm_ctx *vmm,
-                                      size_t exit_reason,
-                                      event_cbk_t callback,
-                                      void *opaque);
-        void (MS_ABI *unregister_event)(struct vmm_ctx *vmm, event_cbk_t callback);
-    } event;
+        void (MS_ABI *register_exit)(struct handler_ctx *ctx,
+                                     size_t exit_reason,
+                                     vmexit_cbk_t callback,
+                                     void *opaque,
+                                     bool override);
+    } handler;
 };
 
 /* Callback/export for when plugin has been loaded into host. */
