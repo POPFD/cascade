@@ -3,6 +3,7 @@
 #include "memory/mem.h"
 #include "memory/vmem.h"
 #include "vmm.h"
+#include "handler.h"
 #include "vmm_common.h"
 #include "nested.h"
 
@@ -179,16 +180,7 @@ static bool get_vmptr(struct vcpu_ctx *vcpu, gpa_t *vmptr)
     return true;
 }
 
-void nested_init(struct vcpu_ctx *vcpu)
-{
-    /*
-     * Adjust the MSR bitmap to indicate which nested VMX related
-     * MSRs we need to trap on.
-     */
-    vmm_msr_trap_enable(vcpu->msr_trap_bitmap, IA32_VMX_BASIC, true);
-}
-
-bool nested_rdmsr(struct vcpu_ctx *vcpu, size_t msr, size_t *value)
+static bool nested_rdmsr(struct vcpu_ctx *vcpu, size_t msr, size_t *value)
 {
     (void)vcpu;
 
@@ -209,7 +201,7 @@ bool nested_rdmsr(struct vcpu_ctx *vcpu, size_t msr, size_t *value)
     return true;
 }
 
-bool nested_wrmsr(struct vcpu_ctx *vcpu, size_t msr, size_t value)
+static bool nested_wrmsr(struct vcpu_ctx *vcpu, size_t msr, size_t value)
 {
     (void)vcpu;
     (void)msr;
@@ -217,7 +209,7 @@ bool nested_wrmsr(struct vcpu_ctx *vcpu, size_t msr, size_t value)
     return false;
 }
 
-bool nested_mov_crx(struct vcpu_ctx *vcpu, bool *move_to_next)
+static bool nested_mov_crx(struct vcpu_ctx *vcpu, bool *move_to_next)
 {
     (void)vcpu;
 
@@ -235,7 +227,7 @@ bool nested_mov_crx(struct vcpu_ctx *vcpu, bool *move_to_next)
     return false;
 }
 
-bool nested_vmxon(struct vcpu_ctx *vcpu, bool *move_to_next)
+static bool nested_vmxon(struct vcpu_ctx *vcpu, bool *move_to_next)
 {
     static const exception_error_code DEFAULT_EC = { 0 };
 
@@ -301,4 +293,114 @@ bool nested_vmxon(struct vcpu_ctx *vcpu, bool *move_to_next)
 
     *move_to_next = true;
     return true;
+}
+
+static void handle_rdmsr(struct vcpu_ctx *vcpu, void *opaque, bool *move_to_next)
+{
+    static const exception_error_code DEFAULT_EC = { 0 };
+
+    (void)opaque;
+
+    size_t msr = (uint32_t)vcpu->guest_context.rcx;
+
+    /* Check to see if valid RPL to perform the read. */
+    segment_selector cs;
+    cs.flags = __vmread(VMCS_GUEST_CS_SEL);
+    if (cs.request_privilege_level != 0) {
+        DEBUG_PRINT("RDMSR 0x%lX wrong RPL 0x%X", msr, cs.request_privilege_level);
+        vmm_inject_guest_event(general_protection, DEFAULT_EC);
+        *move_to_next = false;
+        return;
+    }
+
+    /* Check to see if within valid MSR range. */
+    if ((msr && (msr <= 0x1FFF)) || ((msr >= 0xC0000000) && (msr <= 0xC0001FFF))) {
+
+        /* Attempt to offload to nested handler. */
+        size_t value;
+        if (!nested_rdmsr(vcpu, msr, &value))
+            die_on(true, "Unhandled MSR read 0x%lX at rip 0x%lX", msr, vcpu->guest_context.rip);
+
+        vcpu->guest_context.rax = (uint32_t)value;
+        vcpu->guest_context.rdx = value >> 32;
+        DEBUG_PRINT("Guest read MSR 0x%lX spoofed value 0x%lX real 0x%lX",
+                    msr, value, rdmsr(msr));
+
+        *move_to_next = true;
+        return;
+    }
+
+    /* Invalid MSR which is out of range. */
+    DEBUG_PRINT("RDMSR 0x%lX out of range", msr);
+    vmm_inject_guest_event(general_protection, DEFAULT_EC);
+    *move_to_next = false;
+}
+
+static void handle_wrmsr(struct vcpu_ctx *vcpu, void *opaque, bool *move_to_next)
+{
+    static const exception_error_code DEFAULT_EC = { 0 };
+
+    (void)opaque;
+
+    size_t msr_id = (uint32_t)vcpu->guest_context.rcx;
+    size_t msr_val = (vcpu->guest_context.rdx << 32) | (uint32_t)vcpu->guest_context.rax;
+
+    /* Check to see if valid RPL to perform the read. */
+    segment_selector cs;
+    cs.flags = __vmread(VMCS_GUEST_CS_SEL);
+    if (cs.request_privilege_level != 0) {
+        DEBUG_PRINT("WRMSR 0x%lX 0x%lX wrong RPL 0x%X", msr_id, msr_val, cs.request_privilege_level);
+        vmm_inject_guest_event(general_protection, DEFAULT_EC);
+        *move_to_next = false;
+        return;
+    }
+
+    /* Check to see if within valid MSR range. */
+    if ((msr_id && (msr_id <= 0x1FFF)) || ((msr_id >= 0xC0000000) && (msr_id <= 0xC0001FFF))) {
+
+        /* Attempt to offload to nested handler. */
+        if (!nested_wrmsr(vcpu, msr_id, msr_val))
+            die_on(true, "Unhandled MSR write 0x%lX value at rip 0x%lX",
+                   msr_id, msr_val, vcpu->guest_context.rip);
+
+        DEBUG_PRINT("Guest write MSR 0x%lX value 0x%lX", msr_id, msr_val);
+
+        *move_to_next = true;
+        return;
+    }
+
+    /* Invalid MSR which is out of range. */
+    DEBUG_PRINT("WRMSR 0x%lX 0x%lX out of range", msr_id, msr_val);
+    vmm_inject_guest_event(general_protection, DEFAULT_EC);
+    *move_to_next = false;
+    return;
+}
+
+static void handle_mov_crx(struct vcpu_ctx *vcpu, void *opaque, bool *move_to_next)
+{
+    (void)opaque;
+    die_on(!nested_mov_crx(vcpu, move_to_next), "Unable to handle MOV_CRX");
+}
+
+static void handle_vmxon(struct vcpu_ctx *vcpu, void *opaque, bool *move_to_next)
+{
+    (void)opaque;
+    die_on(!nested_vmxon(vcpu, move_to_next), "Unable to handle VMXON");
+}
+
+void nested_init(struct vmm_ctx *vmm)
+{
+    handler_register_exit(vmm->handler, VMX_EXIT_REASON_RDMSR, handle_rdmsr, NULL, false);
+    handler_register_exit(vmm->handler, VMX_EXIT_REASON_WRMSR, handle_wrmsr, NULL, false);
+    handler_register_exit(vmm->handler, VMX_EXIT_REASON_MOV_CRX, handle_mov_crx, NULL, false);
+    handler_register_exit(vmm->handler, VMX_EXIT_REASON_VMXON, handle_vmxon, NULL, false);
+}
+
+void nested_init_vcpu(struct vcpu_ctx *vcpu)
+{
+    /*
+     * Adjust the MSR bitmap to indicate which nested VMX related
+     * MSRs we need to trap on.
+     */
+    vmm_msr_trap_enable(vcpu->msr_trap_bitmap, IA32_VMX_BASIC, true);
 }

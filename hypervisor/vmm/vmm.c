@@ -636,7 +636,7 @@ static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
         setup_vmcs_guest(vmm, vcpu);
 
         #ifdef CONFIG_NESTED
-            nested_init(vcpu);
+            nested_init_vcpu(vcpu);
         #endif
 
         /* Hook for when running as ROOT mode but we have not
@@ -688,6 +688,10 @@ void vmm_init(struct vmm_init_params *params)
     vmm.ept = ept_init();
 
     handler_init(&vmm);
+
+    #ifdef CONFIG_NESTED
+        nested_init(&vmm);
+    #endif
 
     /* Run the initialisation routine on each LP. */
     efi_plat_run_all_processors(init_routine_per_vcpu, &vmm);
