@@ -7,6 +7,7 @@
 #include "memory/mem.h"
 #include "vmm.h"
 #include "ept.h"
+#include "handler.h"
 #include "nested.h"
 #include "shim.h"
 #include "ia32_compact.h"
@@ -685,6 +686,7 @@ void vmm_init(struct vmm_init_params *params)
 
     spin_init(&vmm.lock);
     vmm.ept = ept_init();
+    vmm.handler = handler_init();
 
     /* Run the initialisation routine on each LP. */
     efi_plat_run_all_processors(init_routine_per_vcpu, &vmm);

@@ -43,6 +43,7 @@ struct cached_interrupt {
 struct vmm_ctx {
     struct vmm_init_params init;
     struct ept_ctx *ept;
+    struct handler_ctx *handler;
     struct plugin_info *plugin_list;
     struct plugin_event *plugin_event_list;
     spinlock_t lock;

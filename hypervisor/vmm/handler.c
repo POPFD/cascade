@@ -1,13 +1,38 @@
 #define DEBUG_MODULE
-#include "platform/standard.h"
 #include "platform/intrin.h"
 #include "memory/mem.h"
+#include "memory/vmem.h"
 #include "interrupt/idt.h"
 #include "plugin/event.h"
 #include "vmm_common.h"
 #include "vmcall.h"
 #include "nested.h"
+#include "handler.h"
 #include "ia32_compact.h"
+
+struct vmexit_handler {
+    /* Doubly linked list so multiple exit handlers can be daisy chained. */
+    struct vmexit_handler *next, *prev;
+    /* The callback for the exit to be called. */
+    exit_cbk_t callback;
+    /* Callback specific data. */
+    void *opaque;
+    /* If called, prevent other daisy chained callbacks from being called. */
+    bool override;
+};
+
+struct handler_ctx {
+    /* An array of exit handler structures.
+     * Each VMEXIT can have multiple handlers daisy chained.
+     * therefore we have to keep track of pointers.
+     *
+     * We can store up to the maximum exit reason which is XRSTORS
+     * (well at least currently). */
+    #define MAX_EXIT_HANDLERS VMX_EXIT_REASON_XRSTORS
+    struct vmexit_handler *handlers[MAX_EXIT_HANDLERS];
+    /* Back reference to the VMM context */
+    struct vmm_ctx *vmm;
+};
 
 static void handle_cached_interrupts(struct vcpu_ctx *vcpu)
 {
@@ -434,6 +459,66 @@ static void handle_exit_reason(struct vcpu_ctx *vcpu)
     }
 
     handle_cached_interrupts(vcpu);
+}
+
+static void register_generic_handlers(struct handler_ctx *ctx)
+{
+    (void)ctx;
+    /* TODO: Lock using VMM lock, register handler, unlock. */
+}
+
+struct handler_ctx *handler_init(void)
+{
+    struct handler_ctx *ctx = vmem_alloc(sizeof(struct handler_ctx), MEM_WRITE);
+    die_on(!ctx, "Unable to allocate context for VMEXIT handlers.");
+
+    register_generic_handlers(ctx);
+    return ctx;
+}
+
+void handler_register_exit(struct handler_ctx *ctx,
+                           size_t exit_reason,
+                           exit_cbk_t callback,
+                           void *opaque,
+                           bool override)
+{
+    /* Ensure synchronization. */
+    spin_lock(&ctx->vmm->lock);
+
+    die_on(exit_reason >= MAX_EXIT_HANDLERS, "Invalid exit handler index 0x%lX", exit_reason);
+
+    /* Allocate a new vmexit handler. */
+    struct vmexit_handler *new_handler = vmem_alloc(sizeof(struct vmexit_handler), MEM_WRITE);
+    die_on(!new_handler, "Unable to allocate memory for VMEXIT handler.");
+
+    /* Fill out the information for the handler. */
+    new_handler->callback = callback;
+    new_handler->opaque = opaque;
+    new_handler->override = override;
+
+    /* Now manipulate the linked list for vmexit entry. */
+    struct vmexit_handler **exit_base = &ctx->handlers[exit_reason];
+    struct vmexit_handler *exit_head = *exit_base;
+    new_handler->next = NULL;
+    if (exit_head == NULL) {
+        /* No current exit handlers. */
+        new_handler->prev = new_handler;
+        *exit_base = new_handler;
+    } else {
+        /* An event already exists.
+         * Add our new handler to the tail of the list. */
+        struct vmexit_handler *exit_tail = exit_head->prev;
+        die_on(override && exit_tail->override,
+               "Cannot override if an override for exit 0x%X already set",
+               exit_reason);
+
+        new_handler->prev = exit_tail;
+        exit_tail->next = new_handler;
+    }
+
+    DEBUG_PRINT("VMEXIT registered for 0x%lX cbk 0x%lX opaque 0x%lX override %d",
+                exit_reason, callback, opaque, override);
+    spin_unlock(&ctx->vmm->lock);
 }
 
 __attribute__((ms_abi)) void handler_guest_to_host(struct vcpu_context *guest_ctx)

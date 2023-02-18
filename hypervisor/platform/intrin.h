@@ -2,6 +2,7 @@
 #define INTRIN_H
 
 #include <stdint.h>
+#include "platform/standard.h"
 
 extern __attribute__((ms_abi)) uint16_t __readcs();
 extern __attribute__((ms_abi)) uint64_t __readcr0();
