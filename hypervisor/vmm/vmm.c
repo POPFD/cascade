@@ -8,6 +8,7 @@
 #include "vmm.h"
 #include "ept.h"
 #include "handler.h"
+#include "vmcall.h"
 #include "nested.h"
 #include "shim.h"
 #include "ia32_compact.h"
@@ -688,6 +689,7 @@ void vmm_init(struct vmm_init_params *params)
     vmm.ept = ept_init();
 
     handler_init(&vmm);
+    vmcall_init(&vmm);
 
     #ifdef CONFIG_NESTED
         nested_init(&vmm);

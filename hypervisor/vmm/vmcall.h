@@ -4,6 +4,6 @@
 #include "platform/standard.h"
 #include "vmm_common.h"
 
-bool vmcall_handle(struct vcpu_ctx *vcpu, bool *move_to_next);
+void vmcall_init(struct vmm_ctx *vmm);
 
 #endif /* VMCALL_H */

@@ -4,6 +4,7 @@
 #include "memory/mem.h"
 #include "plugin/plugin.h"
 #include "app/mem_hide.h"
+#include "handler.h"
 #include "vmcall.h"
 #include "vmcall_if.h"
 #include "vmm_common.h"
@@ -55,7 +56,7 @@ static size_t handle_mem_hide(struct vcpu_ctx *ctx, struct vmcall_param *host_pa
     return 0;
 }
 
-bool vmcall_handle(struct vcpu_ctx *vcpu, bool *move_to_next)
+static void vmcall_handle(struct vcpu_ctx *vcpu, void *opaque, bool *move_to_next)
 {
     typedef size_t (*fn_vmcall_handler)(struct vcpu_ctx *vcpu, struct vmcall_param *host_param);
 
@@ -65,6 +66,8 @@ bool vmcall_handle(struct vcpu_ctx *vcpu, bool *move_to_next)
         [ACTION_LOAD_PLUGIN] = handle_load_plugin,
         [ACTION_HIDE_HV_MEM] = handle_mem_hide
     };
+
+    (void)opaque;
 
     /*
      * Handled VMCALL's from the guest.
@@ -85,11 +88,11 @@ bool vmcall_handle(struct vcpu_ctx *vcpu, bool *move_to_next)
     if (secret_key != VMCALL_SECRET_KEY) {
         *move_to_next = false;
         vmm_inject_guest_event(invalid_opcode, DEFAULT_EC);
-        return true;
+        return;
     }
 
     /* If guest param not set, do nothing. */
-    size_t result = 0;
+    size_t result = -1;
     if (guest_param) {
         /* Copy the parameter from the guest into host context. */
         cr3 guest_cr3;
@@ -122,5 +125,9 @@ bool vmcall_handle(struct vcpu_ctx *vcpu, bool *move_to_next)
 
     vcpu->guest_context.rax = result;
     *move_to_next = true;
-    return true;
+}
+
+void vmcall_init(struct vmm_ctx *vmm)
+{
+    handler_register_exit(vmm->handler, VMX_EXIT_REASON_VMCALL, vmcall_handle, NULL, false);
 }
