@@ -171,7 +171,7 @@ static bool get_vmptr(struct vcpu_ctx *vcpu, gpa_t *vmptr)
 
     cr3 guest_cr3;
     guest_cr3.flags = __vmread(VMCS_GUEST_CR3);
-    if (!mem_copy_virtual_memory(COPY_READ, guest_cr3, guest_addr, vmptr, sizeof(*vmptr))) {
+    if (!mem_copy_virt_tofrom_host(COPY_READ, guest_cr3, guest_addr, vmptr, sizeof(*vmptr))) {
         DEBUG_PRINT("Unable to read guest memory for VMXON pointer");
         return false;
     }

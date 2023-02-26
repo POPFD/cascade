@@ -10,6 +10,7 @@ CFLAGS := -Wall		\
 	-Werror			\
 	-I/usr/share/mingw-w64/include \
 	-I../../interface/ \
+	-I../../submodules/ia32-doc/out/ \
 	-I../ \
 	-std=c++11		\
 

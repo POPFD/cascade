@@ -79,7 +79,7 @@ uintptr_t mem_va_to_pa(cr3 table, void *va)
     }
 }
 
-bool mem_copy_virtual_memory(enum copy_dir dir, cr3 table,
+bool mem_copy_virt_tofrom_host(enum copy_dir dir, cr3 table,
                              uintptr_t addr, void *buffer, size_t size)
 {
     die_on(!table.flags, "Invalid CR3 value");
@@ -113,6 +113,50 @@ bool mem_copy_virtual_memory(enum copy_dir dir, cr3 table,
         addr += bytes_to_copy;
         buffer = (void *)((uintptr_t)buffer + bytes_to_copy);
         size -= bytes_to_copy;
+    }
+
+    return result;
+}
+
+bool mem_copy_virt_to_virt(cr3 src_cr3, void *src, cr3 dest_cr3, void *dest, size_t size)
+{
+    die_on(!src_cr3.flags, "Invalid source CR3 value");
+    die_on(!src, "Invalid source value");
+    die_on(!dest_cr3.flags, "Invalid dest CR3 value");
+    die_on(!dest, "Invalid destination value");
+    die_on(!size, "Invalid size specified");
+
+    bool result = true;
+
+    /* Re-read our guest -> host copy, pretty much identical. */
+    uintptr_t virt_src = (uintptr_t)src;
+    uintptr_t virt_dest = (uintptr_t)dest;
+    while (size) {
+        /* Calculate how many bytes we can do from first page. */
+        size_t src_page_offset = ADDRMASK_PTE_OFFSET(virt_src);
+        size_t src_page_bytes = PAGE_SIZE - src_page_offset;
+
+        size_t dest_page_offset = ADDRMASK_PTE_OFFSET(virt_dest);
+        size_t dest_page_bytes = PAGE_SIZE - dest_page_offset;
+
+        /* Make sure we are not overlapping a copy from dest or source.
+         * Also make sure we're not copying more than what is available left to copy. */
+        size_t copy_bytes = (src_page_bytes < dest_page_bytes) ? src_page_bytes : dest_page_bytes;
+        copy_bytes = (copy_bytes < size) ? copy_bytes : size;
+
+        /* Get the physical addresses for src & dest.
+         * Since we map all physical memory into VMROOT, just copy like normal. */
+        uint8_t *phys_src = (uint8_t *)mem_va_to_pa(src_cr3, (void *)virt_src);
+        uint8_t *phys_dest = (uint8_t *)mem_va_to_pa(dest_cr3, (void *)virt_dest);
+        if (!phys_src || !phys_dest) {
+            result = false;
+            break;
+        }
+
+        memcpy(&phys_dest[dest_page_offset], &phys_src[src_page_offset], copy_bytes);
+        virt_src += copy_bytes;
+        virt_dest += copy_bytes;
+        size -= copy_bytes;
     }
 
     return result;

@@ -18,6 +18,7 @@
  */
 #include <stdint.h>
 #include <stdbool.h>
+#include "ia32_compact.h"
 
 #define VMCALL_SECRET_KEY ((size_t)0x0CA5CADE)
 
@@ -25,6 +26,7 @@ enum vmcall_action {
     ACTION_CHECK_PRESENCE,
     ACTION_LOAD_PLUGIN,
     ACTION_HIDE_HV_MEM,
+    ACTION_RW_MEM,
     ACTION_GATHER_EVENTS
 };
 
@@ -41,6 +43,19 @@ struct vmcall_param {
 
 struct vmcall_param_load_plugin {
     void *plugin;
+};
+
+enum vmcall_rw_direction {
+    DIRECTION_READ,
+    DIRECTION_WRITE
+};
+
+struct vmcall_param_rw_mem {
+    cr3 target_cr3;
+    uintptr_t target_addr;
+    uintptr_t local_addr;
+    size_t size;
+    enum vmcall_rw_direction dir;
 };
 
 #endif /* VMCALL_IF_H */

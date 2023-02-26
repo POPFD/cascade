@@ -19,7 +19,7 @@ static bool check_image(uint8_t *guest_raw,
     /* Read the DOS header and check validity. */
     cr3 guest_cr3;
     guest_cr3.flags = __vmread(VMCS_GUEST_CR3);
-    if (!mem_copy_virtual_memory(COPY_READ, guest_cr3, (uintptr_t)guest_raw,
+    if (!mem_copy_virt_tofrom_host(COPY_READ, guest_cr3, (uintptr_t)guest_raw,
                                  idh, sizeof(*idh))) {
         DEBUG_PRINT("Unable to read IDH.");
         return false;
@@ -31,7 +31,7 @@ static bool check_image(uint8_t *guest_raw,
     }
 
     /* Read the INH and check validity. */
-    if (!mem_copy_virtual_memory(COPY_READ, guest_cr3, (uintptr_t)&guest_raw[idh->e_lfanew],
+    if (!mem_copy_virt_tofrom_host(COPY_READ, guest_cr3, (uintptr_t)&guest_raw[idh->e_lfanew],
                                  inh, sizeof(*inh))) {
         DEBUG_PRINT("Unable to read INH.");
         return false;
@@ -202,7 +202,7 @@ static bool load_image(void *guest_raw,
     /* Copy over the image from the plugin straight to the newly allocated host memory. */
     cr3 guest_cr3 = { 0 };
     guest_cr3.flags = __vmread(VMCS_GUEST_CR3);
-    if (!mem_copy_virtual_memory(COPY_READ, guest_cr3, (uintptr_t)guest_raw,
+    if (!mem_copy_virt_tofrom_host(COPY_READ, guest_cr3, (uintptr_t)guest_raw,
                                  new_image, image_size)) {
         DEBUG_PRINT("Unable to copy plugin image to host.");
         return false;
