@@ -24,7 +24,6 @@
 
 enum vmcall_action {
     ACTION_CHECK_PRESENCE,
-    ACTION_HIDE_HV_MEM,
     ACTION_RW_MEM,
     ACTION_GATHER_EVENTS
 };

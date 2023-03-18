@@ -2,7 +2,6 @@
 #include "platform/standard.h"
 #include "platform/intrin.h"
 #include "memory/mem.h"
-#include "app/mem_hide.h"
 #include "handler.h"
 #include "vmcall.h"
 #include "vmcall_if.h"
@@ -41,18 +40,6 @@ static size_t handle_check_presence(struct vcpu_ctx *vcpu, struct vmcall_param *
     (void)vcpu;
     (void)host_param;
     DEBUG_PRINT("Guest checked presence.");
-    return 0;
-}
-
-static size_t handle_mem_hide(struct vcpu_ctx *ctx, struct vmcall_param *host_param)
-{
-    /* Memory hide takes no parameters. */
-    (void)host_param;
-
-    /* Simple call to the memory hiding module for init.
-     * This CANNOT fail, therefore we return always success. */
-    DEBUG_PRINT("Hiding hypervisor memory.");
-    mem_hide_init(ctx->vmm);
     return 0;
 }
 
@@ -100,7 +87,6 @@ static void vmcall_handle(struct vcpu_ctx *vcpu, void *opaque, bool *move_to_nex
     static const exception_error_code DEFAULT_EC = { 0 };
     static const fn_vmcall_handler VMCALL_HANDLERS[] = {
         [ACTION_CHECK_PRESENCE] = handle_check_presence,
-        [ACTION_HIDE_HV_MEM] = handle_mem_hide,
         [ACTION_RW_MEM] = handle_rw_mem
     };
 

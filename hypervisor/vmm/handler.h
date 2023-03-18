@@ -2,6 +2,7 @@
 #define HANDLER_H
 
 #include "platform/standard.h"
+#include "vmm_common.h"
 #include "handler_common.h"
 
 struct handler_ctx *handler_init(struct vmm_ctx *vmm);
