@@ -22,7 +22,7 @@ CFLAGS := -fno-stack-protector		\
 	-I/usr/include/efi				\
 	-I/usr/include/efi/x86_64		\
 	-I../submodules/ia32-doc/out/	\
-	-I../interface/					\
+	-I../interface/hypervisor/		\
 	-I.								\
 	-DEFI_FUNCTION_WRAPPER			\
 	-DPRINTF_DISABLE_SUPPORT_FLOAT	\
