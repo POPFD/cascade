@@ -1,6 +1,5 @@
 #define DEBUG_MODULE
 #include "platform/standard.h"
-#include "platform/efi_plat.h"
 #include "platform/intrin.h"
 #include "platform/util.h"
 #include "memory/pmem.h"
@@ -11,6 +10,7 @@
 #include "vmcall.h"
 #include "nested.h"
 #include "shim.h"
+#include "impl_hooks.h"
 #include "ia32_compact.h"
 
 /* The main VMM that will initialise the hypervisor,
@@ -242,7 +242,7 @@ static void gather_gdt_entry(segment_descriptor_register_64 *gdtr, uint16_t sel,
                   ((size_t)descriptor->base_address_low);
 
     if (descriptor->descriptor_type == 0) {
-        entry->base |= (UINTN)descriptor->base_address_upper << 32;
+        entry->base |= (size_t)descriptor->base_address_upper << 32;
     }
 
     /* Access rights are defines as the middle 16 bits of the descriptor flags section. */
@@ -600,7 +600,7 @@ static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
     __writecr3(vmm->init.host_cr3.flags);
 
     size_t proc_idx;
-    efi_plat_processor_index(&proc_idx);
+    die_on(!impl_get_processor_index(&proc_idx), "Unable to retrieve processor index.");
     die_on(proc_idx >= VCPU_MAX, "vCPU index greater than supported by VMM.");
 
     /* Create the vCPU context structure.
@@ -696,7 +696,8 @@ void vmm_init(struct vmm_init_params *params)
     #endif
 
     /* Run the initialisation routine on each LP. */
-    efi_plat_run_all_processors(init_routine_per_vcpu, &vmm);
+    die_on(!impl_run_all_processors(init_routine_per_vcpu, &vmm),
+           "Unable to run VMM init routine on each LP.");
 }
 
 __attribute__((noreturn)) void vmm_hyperjack_handler(struct vcpu_ctx *vcpu)

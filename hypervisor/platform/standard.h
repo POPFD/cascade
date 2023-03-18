@@ -1,8 +1,6 @@
 #ifndef STANDARD_H
 #define STANDARD_H
 
-#include <efi.h>
-#include <efilib.h>
 #include <stdio.h>
 #include <string.h>
 #include <stddef.h>

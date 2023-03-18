@@ -169,22 +169,22 @@ static void handle_sipi(struct vcpu_ctx *vcpu, void *opaque, bool *move_to_next)
 
 	/* Use the exit qualification to gather the SIPI vector.
 	 * Only bits 7:0 contain the vector, the rest are zero'd. */
-	UINT64 sipi_vector = __vmread(VMCS_EXIT_QUALIFICATION);
+	uint64_t sipi_vector = __vmread(VMCS_EXIT_QUALIFICATION);
 
     /* Initialise all the VMCS fields to initial values. */
 
     /* Set up the guest control registers. */
     cr0 guest_cr0;
     guest_cr0.flags = 0;
-    guest_cr0.extension_type = TRUE;
-    guest_cr0.numeric_error = TRUE;
-    guest_cr0.not_write_through = TRUE;
-    guest_cr0.cache_disable = TRUE;
+    guest_cr0.extension_type = true;
+    guest_cr0.numeric_error = true;
+    guest_cr0.not_write_through = true;
+    guest_cr0.cache_disable = true;
     __vmwrite(VMCS_GUEST_CR0, guest_cr0.flags);
 
     cr4 guest_cr4;
     guest_cr4.flags = 0;
-    guest_cr4.vmx_enable = TRUE;
+    guest_cr4.vmx_enable = true;
     __vmwrite(VMCS_GUEST_CR4, guest_cr4.flags);
 
     cr3 guest_cr3;
@@ -198,7 +198,7 @@ static void handle_sipi(struct vcpu_ctx *vcpu, void *opaque, bool *move_to_next)
     /* Set up VMCS guest registers. */
     rfl guest_rfl;
     guest_rfl.flags = 0;
-    guest_rfl.read_as_1 = TRUE;
+    guest_rfl.read_as_1 = true;
     __vmwrite(VMCS_GUEST_RFLAGS, guest_rfl.flags);
 
     __vmwrite(VMCS_GUEST_RSP, 0);
