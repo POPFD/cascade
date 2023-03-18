@@ -24,7 +24,6 @@
 
 enum vmcall_action {
     ACTION_CHECK_PRESENCE,
-    ACTION_LOAD_PLUGIN,
     ACTION_HIDE_HV_MEM,
     ACTION_RW_MEM,
     ACTION_GATHER_EVENTS
@@ -39,10 +38,6 @@ struct vmcall_param {
     enum vmcall_action action;
     void *param;
     size_t param_size;
-};
-
-struct vmcall_param_load_plugin {
-    void *plugin;
 };
 
 enum vmcall_rw_direction {

@@ -2,7 +2,6 @@
 #include "platform/standard.h"
 #include "platform/intrin.h"
 #include "memory/mem.h"
-#include "plugin/plugin.h"
 #include "app/mem_hide.h"
 #include "handler.h"
 #include "vmcall.h"
@@ -15,7 +14,7 @@ static bool read_guest_action_param(struct vmcall_param *host_param,
 {
     /* A vmcall_param sent from the guest can contain a second set of parameters,
      * we will refer to these as action parameters.
-     * For example if the ACTION_LOAD_PLUGIN is called we a second set of params
+     * For example if the ACTION_RW_MEM is called we a second set of params
      * indicating the actual plugin buffer must be sent along too.
      * This utility reads them from the guest and allows the hypervisor to
      * access them. */
@@ -43,24 +42,6 @@ static size_t handle_check_presence(struct vcpu_ctx *vcpu, struct vmcall_param *
     (void)host_param;
     DEBUG_PRINT("Guest checked presence.");
     return 0;
-}
-
-static size_t handle_load_plugin(struct vcpu_ctx *vcpu, struct vmcall_param *host_param)
-{
-    /* Read the plugin specific parameters, these will be passed to plugin loader. */
-    struct vmcall_param_load_plugin plugin_param = { 0 };
-    if (!read_guest_action_param(host_param, &plugin_param, sizeof(plugin_param))) {
-        return -1;
-    }
-
-    DEBUG_PRINT("Guest requests loading of plugin. guest pointer 0x%lX",
-                plugin_param.plugin);
-
-    /* 
-     * Now pass the plugin parameters to our plugin loader module
-     * so that it can be dynamically loaded.
-     */
-    return plugin_load(vcpu->vmm, plugin_param.plugin);
 }
 
 static size_t handle_mem_hide(struct vcpu_ctx *ctx, struct vmcall_param *host_param)
@@ -119,7 +100,6 @@ static void vmcall_handle(struct vcpu_ctx *vcpu, void *opaque, bool *move_to_nex
     static const exception_error_code DEFAULT_EC = { 0 };
     static const fn_vmcall_handler VMCALL_HANDLERS[] = {
         [ACTION_CHECK_PRESENCE] = handle_check_presence,
-        [ACTION_LOAD_PLUGIN] = handle_load_plugin,
         [ACTION_HIDE_HV_MEM] = handle_mem_hide,
         [ACTION_RW_MEM] = handle_rw_mem
     };
