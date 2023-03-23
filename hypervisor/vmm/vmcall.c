@@ -2,95 +2,53 @@
 #include "platform/standard.h"
 #include "platform/intrin.h"
 #include "memory/mem.h"
+#include "memory/vmem.h"
 #include "handler.h"
 #include "vmcall.h"
 #include "vmcall_if.h"
 #include "vmm_common.h"
 
-static bool read_guest_action_param(struct vmcall_param *host_param,
-                                      void *action_param,
-                                      size_t action_param_size)
+struct vmcall_handler {
+    /* Linked list pointer. */
+    struct vmcall_handler *next;
+    /* The action ID for identification. */
+    vmcall_id_t id;
+    /* The callback for the vmcall. */
+    vmcall_cbk_t callback;
+    /* Callback specific data. */
+    void *opaque;
+};
+
+struct vmcall_ctx {
+    /* Hold a linked list of vmcall handlers. */
+    struct vmcall_handler *handlers;
+    /* Back reference to the VMM context */
+    struct vmm_ctx *vmm;
+};
+
+static struct vmcall_handler *find_handler(struct vmcall_ctx *ctx, vmcall_id_t id)
 {
-    /* A vmcall_param sent from the guest can contain a second set of parameters,
-     * we will refer to these as action parameters.
-     * For example if the ACTION_RW_MEM is called we a second set of params
-     * indicating the actual plugin buffer must be sent along too.
-     * This utility reads them from the guest and allows the hypervisor to
-     * access them. */
-    if (!host_param->param || (host_param->param_size != action_param_size)) {
-        DEBUG_PRINT("Invalid vmcall parameters %p size %lu for action %d.",
-            host_param->param, host_param->param_size, host_param->action);
-        return false;
-    }
+    struct vmcall_handler *curr = ctx->handlers;
+    while (curr) {
+        if (curr->id == id)
+            return curr;
 
-    cr3 guest_cr3;
-    guest_cr3.flags = __vmread(VMCS_GUEST_CR3);
-    if (!mem_copy_virt_tofrom_host(COPY_READ, guest_cr3, (uintptr_t)host_param->param,
-                                 action_param, action_param_size)) {
-        DEBUG_PRINT("Unable to copy action param %p size %lu for action %d",
-            host_param->param, host_param->param_size, host_param->action);
-        return false;
+        curr = curr->next;
     }
-
-    return true;
+    return NULL;
 }
 
-static size_t handle_check_presence(struct vcpu_ctx *vcpu, struct vmcall_param *host_param)
+static vmcall_status_t handle_check_presence(uint8_t *buffer, void *opaque)
 {
-    (void)vcpu;
-    (void)host_param;
-    DEBUG_PRINT("Guest checked presence.");
-    return 0;
-}
-
-static size_t handle_rw_mem(struct vcpu_ctx *ctx, struct vmcall_param *host_param)
-{
-    (void)ctx;
-
-    /* Read the parameters that are needed for arbitrary read/write. */
-    struct vmcall_param_rw_mem mem_param = { 0 };
-    if (!read_guest_action_param(host_param, &mem_param, sizeof(mem_param))) {
-        return -1;
-    }
-
-    /* Store the current guest CR3, as this is where the callee needs some data read/wrote */
-    cr3 guest_cr3;
-    guest_cr3.flags = __vmread(VMCS_GUEST_CR3);
-
-    cr3 src_cr3;
-    uintptr_t src_addr;
-    cr3 dest_cr3;
-    uintptr_t dest_addr;
-    size_t size = mem_param.size;
-    if (mem_param.dir == DIRECTION_READ) {
-        src_cr3 = mem_param.target_cr3;
-        src_addr = mem_param.target_addr;
-        dest_cr3 = guest_cr3;
-        dest_addr = mem_param.local_addr;
-    } else {
-        src_cr3 = guest_cr3;
-        src_addr = mem_param.local_addr;
-        dest_cr3 = mem_param.target_cr3;
-        dest_addr = mem_param.target_addr;
-    }
-
-    bool copy_result = mem_copy_virt_to_virt(src_cr3, (void *)src_addr,
-                                             dest_cr3, (void *)dest_addr,
-                                             size);
-    return copy_result ? 0 : -1;
-}
-
-static void vmcall_handle(struct vcpu_ctx *vcpu, void *opaque, bool *move_to_next)
-{
-    typedef size_t (*fn_vmcall_handler)(struct vcpu_ctx *vcpu, struct vmcall_param *host_param);
-
-    static const exception_error_code DEFAULT_EC = { 0 };
-    static const fn_vmcall_handler VMCALL_HANDLERS[] = {
-        [ACTION_CHECK_PRESENCE] = handle_check_presence,
-        [ACTION_RW_MEM] = handle_rw_mem
-    };
-
+    (void)buffer;
     (void)opaque;
+    DEBUG_PRINT("Guest checked presence.");
+    return VMCALL_STATUS_OK;
+}
+
+static void vmcall_exit_handle(struct vcpu_ctx *vcpu, void *opaque, bool *move_to_next)
+{
+    static const exception_error_code DEFAULT_EC = { 0 };
 
     /*
      * Handled VMCALL's from the guest.
@@ -100,7 +58,7 @@ static void vmcall_handle(struct vcpu_ctx *vcpu, void *opaque, bool *move_to_nex
      * RDX = (struct vmcall_param *) - guest pointer
      * 
      * On return:
-     * RAX = result code
+     * RAX = vmcall status
      *
      * If RCX is not equal to the secret key, no action taken.
      * If present, attempt to read the action parameter and parse.
@@ -114,43 +72,101 @@ static void vmcall_handle(struct vcpu_ctx *vcpu, void *opaque, bool *move_to_nex
         return;
     }
 
-    /* If guest param not set, do nothing. */
-    size_t result = -1;
-    if (guest_param) {
-        /* Copy the parameter from the guest into host context. */
-        cr3 guest_cr3;
-        guest_cr3.flags = __vmread(VMCS_GUEST_CR3);
-        die_on(!guest_cr3.flags, "Guest CR3 value cannot be retrieved.");
-
-        /* Attempt to copy params from guest to host, if fail do nothing. */
-        struct vmcall_param host_param = { 0 };
-        if (mem_copy_virt_tofrom_host(COPY_READ, guest_cr3, guest_param,
-                                    &host_param, sizeof(host_param))) {
-
-            DEBUG_PRINT("action 0x%lX param 0x%lX param_size 0x%lX",
-                        host_param.action, host_param.param, host_param.param_size);
-
-            /* Check to see if handler is defined for action. */
-            if ((host_param.action < ARRAY_SIZE(VMCALL_HANDLERS)) &&
-                VMCALL_HANDLERS[host_param.action]){
-
-                /* Call the targeted handler. */
-                size_t tmp_res = VMCALL_HANDLERS[host_param.action](vcpu, &host_param);
-
-                /* Copy the modified host parameter back to guest memory as it may be modified. */
-                if (mem_copy_virt_tofrom_host(COPY_WRITE, guest_cr3, guest_param,
-                                            &host_param, sizeof(host_param))) {
-                    result = tmp_res;
-                }
-            }
-        }
+    /* Ensure we actually have a parameter specified. */
+    vmcall_status_t status;
+    if (!guest_param) {
+        status = VMCALL_STATUS_INVALID_PARAM;
+        goto tidyup;
     }
 
-    vcpu->guest_context.rax = result;
+    /* Copy the parameter from the guest into host context. */
+    cr3 guest_cr3;
+    guest_cr3.flags = __vmread(VMCS_GUEST_CR3);
+    die_on(!guest_cr3.flags, "Guest CR3 value cannot be retrieved.");
+
+    struct vmcall_param host_param = { 0 };
+    if (!mem_copy_virt_tofrom_host(COPY_READ, guest_cr3, guest_param,
+                                   &host_param, sizeof(host_param))) {
+        status = VMCALL_STATUS_INVALID_PARAM;
+        goto tidyup;
+    }
+
+    /* Now lets actually do the VMCALL callback handling. */
+    struct vmcall_ctx *ctx = (struct vmcall_ctx *)opaque;
+
+    spin_lock(&ctx->vmm->lock);
+
+    /* Find the handler relevant for the VMCALL. */
+    struct vmcall_handler *handler = find_handler(ctx, host_param.id);
+    if (!handler) {
+        status = VMCALL_STATUS_INVALID_ID;
+        goto tidyup_locked;
+    }
+
+    /* Call the handler and store status. */
+    status = handler->callback(host_param.buffer, handler->opaque);
+    DEBUG_PRINT("VMCALL callback id=%ld status=%ld", host_param.id, status);
+
+    /* Copy the modified host parameter back to guest memory. */
+    if (!mem_copy_virt_tofrom_host(COPY_WRITE, guest_cr3, guest_param,
+                                   &host_param, sizeof(host_param))) {
+        status = VMCALL_STATUS_INTERNAL_ERROR;
+    }
+
+    /* Now store success status. */
+tidyup_locked:
+    spin_unlock(&ctx->vmm->lock);
+tidyup:
+    vcpu->guest_context.rax = status;
     *move_to_next = true;
 }
 
-void vmcall_init(struct vmm_ctx *vmm)
+struct vmcall_ctx *vmcall_init(struct vmm_ctx *vmm)
 {
-    handler_register_exit(vmm->handler, VMX_EXIT_REASON_VMCALL, vmcall_handle, NULL, false);
+    /* Allocate our context structure for VMCALL handling. */
+    struct vmcall_ctx *ctx = vmem_alloc(sizeof(struct vmcall_ctx), MEM_WRITE);
+    die_on(!ctx, "Unable to allocate context for VMCALL handlers.");
+    vmm->vmcall = ctx;
+    ctx->vmm = vmm;
+
+    /* Register a VMEXIT reason handler so we can catch & parse VMCALLs. */
+    handler_register_exit(vmm->handler, VMX_EXIT_REASON_VMCALL, vmcall_exit_handle, ctx, false);
+
+    /* Register our generic VMCALL events. */
+    vmcall_register_action(ctx, VMCALL_ACTION_CHECK_PRESENCE, handle_check_presence, ctx);
+
+    return ctx;
+}
+
+void vmcall_register_action(struct vmcall_ctx *ctx,
+                            vmcall_id_t id,
+                            vmcall_cbk_t callback,
+                            void *opaque)
+{
+    /* Ensure synchronization. */
+    spin_lock(&ctx->vmm->lock);
+
+    /* Ensure there isn't already a VMCALL handler registered with same ID. */
+    die_on(find_handler(ctx, id),
+           "Handler already existing for VMCALL id=%ld", id);
+
+    /* Allocate a new handler structure. */
+    struct vmcall_handler *new_handler = vmem_alloc(sizeof(struct vmcall_handler), MEM_WRITE);
+    die_on(!new_handler, "Unable to allocate memory for VMCALL handler.");
+
+    new_handler->id = id;
+    new_handler->callback = callback;
+    new_handler->opaque = opaque;
+
+    /* Now add it to the head of our handler list. */
+    if (!ctx->handlers)
+        ctx->handlers = new_handler;
+    else {
+        new_handler->next = ctx->handlers;
+        ctx->handlers = new_handler;
+    }
+
+    DEBUG_PRINT("VMCALL registered for id %ld cbk 0x%lX opaque 0x%lX",
+                id, callback, opaque);
+    spin_unlock(&ctx->vmm->lock);
 }

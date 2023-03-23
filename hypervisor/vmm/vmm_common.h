@@ -44,6 +44,7 @@ struct vmm_ctx {
     struct vmm_init_params init;
     struct ept_ctx *ept;
     struct handler_ctx *handler;
+    struct vmcall_ctx *vmcall;
     spinlock_t lock;
 };
 
