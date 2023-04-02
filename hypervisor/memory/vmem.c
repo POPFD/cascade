@@ -200,6 +200,17 @@ void vmem_init(cr3 *original_cr3, cr3 *new_cr3)
     new_cr3->address_of_page_directory = ((uintptr_t)m_ctx->pml4) / PAGE_SIZE;
     __writecr3(new_cr3->flags);
     DEBUG_PRINT("New CR3 value loaded %lX", new_cr3->flags);
+
+    /* Ensure everything in EFER is correct. */
+    ia32_efer_register efer = { 0 };
+    efer.flags = rdmsr(IA32_EFER);
+    die_on(!efer.ia32e_mode_active, "ia32e_mode not active");
+    die_on(!efer.ia32e_mode_enable, "ia32e_mode not enabled");
+    if (!efer.execute_disable_bit_enable) {
+        DEBUG_PRINT("EFER.NX not enabled, setting now.");
+        efer.execute_disable_bit_enable = true;
+        wrmsr(IA32_EFER, efer.flags);
+    }
 }
 
 void *vmem_alloc(size_t size, unsigned int flags)
