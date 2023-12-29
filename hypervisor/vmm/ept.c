@@ -64,8 +64,14 @@ static void gather_mtrr_list(struct ept_ctx *ctx)
         if (mtrr->valid) {
             mtrr->phys_base_min = base.physical_addres_base * PAGE_SIZE;
 
-            long long bit_idx = __builtin_ffsll(mask.physical_addres_mask * PAGE_SIZE);
-            mtrr->phys_base_max = mtrr->phys_base_min + ((1ull << bit_idx) - 1);
+            /*
+             * __builtin_ffsll returns 1 + the index of the least significate 1-bit of x.
+             * https://gcc.gnu.org/onlinedocs/gcc/Other-Builtins.html
+             */
+            long long bit_idx = __builtin_ffsll(mask.physical_addres_mask) - 1;
+            size_t size_in_pages = (1ull << bit_idx);
+
+            mtrr->phys_base_max = mtrr->phys_base_min + (size_in_pages * PAGE_SIZE);
         }
 
         DEBUG_PRINT("Valid %d type %d base_min %lX base_max %lX",
@@ -78,6 +84,7 @@ static uint32_t adjust_memory_type(struct ept_ctx *ctx, uintptr_t addr, uint32_t
     /* Check to see if the specified address falls within
      * any of the MTRR ranges, if so we need to adjust the
      * effective memory type. */
+    uint32_t new_type = type;
     for (int i = 0; i < IA32_MTRR_COUNT; i++) {
 
         /* Not a valid entry, skip. */
@@ -88,12 +95,12 @@ static uint32_t adjust_memory_type(struct ept_ctx *ctx, uintptr_t addr, uint32_t
         if (((addr + (MiB(2) - 1)) >= ctx->mtrr[i].phys_base_min) &&
             (addr <= ctx->mtrr[i].phys_base_max)) {
             
-            return ctx->mtrr[i].type;
+            new_type = ctx->mtrr[i].type;
         }
     }
 
     /* If not in MTRR list, return desired. */
-    return type;
+    return new_type;
 }
 
 static void ept_split_large_page(struct ept_ctx *ctx, uintptr_t phys_addr)
