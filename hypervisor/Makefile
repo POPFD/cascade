@@ -6,7 +6,7 @@ OUT_LIB_NAME := $(BUILDDIR)/$(FILE_NAME).a
 CC := gcc
 AR := ar
 
-CDEFINES := CONFIG_NESTED
+# CDEFINES := CONFIG_NESTED
 
 CFLAGS := -fno-stack-protector		\
 	-fdiagnostics-color				\
