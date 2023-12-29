@@ -45,6 +45,30 @@
 typedef uintptr_t gpa_t;
 typedef uintptr_t hva_t;
 
+static inline void wait_for_debugger(void)
+{
+    /*
+     * Just some crappy while != 0 loop which the debugger must explicitly
+     * clear. This is ONLY to be used when we need to attach with GDB and
+     * figure something out. Should not be used for anything else.
+     *
+     * When the debugger reaches this point, you can then simply run:
+     * "set $eax=0" to step through and continue with what you need.
+     *
+     * cli/sti are used to prevent any interrupts during waiting.
+     */
+    static volatile int wait_clear;
+
+    wait_clear = 1;
+
+    asm volatile ("cli");
+
+    while (wait_clear)
+        asm volatile ( "pause" );
+
+    asm volatile ("sti");
+}
+
 /* Debug printing */
 static inline void print_buffer(const char *format, ...)
 {

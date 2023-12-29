@@ -1,0 +1,3 @@
+target remote :1234
+layout asm
+set disassembly-flavor intel
