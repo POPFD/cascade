@@ -11,6 +11,8 @@ LD := ld
 OC := objcopy
 
 CFLAGS := -fno-stack-protector			\
+	-fcf-protection=none				\
+	-mno-shstk							\
 	-fshort-wchar						\
 	-mno-sse							\
 	-mno-red-zone						\

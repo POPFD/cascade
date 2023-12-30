@@ -9,6 +9,8 @@ AR := ar
 # CDEFINES := CONFIG_NESTED
 
 CFLAGS := -fno-stack-protector		\
+	-fcf-protection=none			\
+	-mno-shstk						\
 	-fdiagnostics-color				\
 	-fshort-wchar					\
 	-mno-sse						\
