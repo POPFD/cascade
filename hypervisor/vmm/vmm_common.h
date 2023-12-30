@@ -75,7 +75,7 @@ static inline struct vcpu_ctx *vmm_get_vcpu_ctx(void)
      * we can use this field in the host context to store/retrieve
      * the vCPU context pointer.
      */
-    struct vcpu_ctx *vcpu = (struct vcpu_ctx *)__vmread(VMCS_HOST_GS_BASE);
+    struct vcpu_ctx *vcpu = (struct vcpu_ctx *)rdmsr(IA32_GS_BASE);
     die_on(!vcpu, "vCPU context not correct.");
     return vcpu;
 }

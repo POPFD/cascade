@@ -316,6 +316,24 @@ static void setup_vmcs_host(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
     DEBUG_PRINT("VMCS_HOST_RIP: 0x%lX VMCS_HOST_RSP", host_rip, host_rsp);
 }
 
+__attribute__((noreturn)) static void vmm_hyperjack_handler(void)
+{
+    /*
+     * We are currently executing in the guest, after a successful
+     * initial VMLAUNCH, so now we need to return to our hyperjacking
+     * code path where the initial init_routine_per_vcpu::__capture_context
+     * took place.
+     *
+     * This time with the running_as_guest flag set, therefore the driver
+     * should then exit successfully.
+     */
+    struct vcpu_ctx *vcpu = vmm_get_vcpu_ctx();
+
+    vcpu->running_as_guest = true;
+    __restore_context(&vcpu->guest_context);
+    die_on(true, "Shouldn't be here context should have been restored.");
+}
+
 static void setup_vmcs_guest(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
 {
     /* 
@@ -469,6 +487,15 @@ static void setup_vmcs_guest(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
     __vmwrite(VMCS_GUEST_EFER, rdmsr(IA32_EFER));
 
     /*
+     * We (ab)use the GS_BASE field to store out vCPU context, we do this
+     * for guest context so that we can retrieve it in our hyperjack handler.
+     *
+     * This will eventually get overwritten/nulled when the guest OS boots
+     * after anyway.
+     */
+    __vmwrite(VMCS_GUEST_GS_BASE, (uintptr_t)vcpu);
+
+    /*
     * Finally, load the guest stack, instruction pointer, and rflags, which
     * corresponds exactly to the location where __capture_context will return
     * to inside of init_routine_per_vcpu.
@@ -483,10 +510,8 @@ static void setup_vmcs_guest(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
     this_cr3.flags = __readcr3();
     uintptr_t phys_vcpu_ctx = (uintptr_t)mem_va_to_pa(this_cr3, vcpu);
 
-    uintptr_t guest_rip = (uintptr_t)shim_host_to_guest;
+    uintptr_t guest_rip = (uintptr_t)vmm_hyperjack_handler;
     uintptr_t guest_rsp = (uintptr_t)phys_vcpu_ctx + VMM_HYPERJACK_STACK_OFFSET;
-
-    *(uintptr_t*)(guest_rsp) = (uintptr_t)phys_vcpu_ctx;
 
     __vmwrite(VMCS_GUEST_RFLAGS, guest_ctx->e_flags);
     __vmwrite(VMCS_GUEST_RSP, guest_rsp);
@@ -698,24 +723,6 @@ void vmm_init(struct vmm_init_params *params)
     /* Run the initialisation routine on each LP. */
     die_on(!impl_run_all_processors(init_routine_per_vcpu, &vmm),
            "Unable to run VMM init routine on each LP.");
-}
-
-__attribute__((noreturn)) void vmm_hyperjack_handler(struct vcpu_ctx *vcpu)
-{
-    /*
-     * We are currently executing in the guest, after a successful
-     * initial VMLAUNCH, so now we need to return to our hyperjacking
-     * code path where the initial init_routine_per_vcpu::__capture_context
-     * took place.
-     *
-     * This time with the running_as_guest flag set, therefore the driver
-     * should then exit successfully.
-     */
-    DEBUG_PRINT("Retrieved vCPU context: 0x%lX", (uintptr_t)vcpu);
-
-    vcpu->running_as_guest = true;
-    __restore_context(&vcpu->guest_context);
-    die_on(true, "Shouldn't be here context should have been restored.");
 }
 
 void vmm_inject_guest_event(exception_vector vector, exception_error_code code)
