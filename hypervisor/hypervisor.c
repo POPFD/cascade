@@ -26,8 +26,14 @@ void hypervisor_init(void)
     vmm_init(&vmm_params);
 
     /* DEBUG: Try trigger a VMEXIT just to test. */
-    cpuid_eax_01 version_info;
-    CPUID_LEAF_READ(CPUID_VERSION_INFO, version_info);
+    uint64_t rax, rbx, rcx, rdx;
+    asm volatile (
+        "movl $0x40000000, %%eax;"
+        "cpuid;"
+        : "=a"(rax), "=b"(rbx), "=c"(rcx), "=d"(rdx)
+    );
+    debug_print("READ leaf=0x40000000 eax=0x%lX ebx=0x%lX ecx=0x%lX edx=0x%lX",
+                rax, rbx, rcx, rdx);
 
     debug_print("Hypervisor initialised.");
 }
