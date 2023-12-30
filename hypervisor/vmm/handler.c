@@ -352,7 +352,7 @@ static void handle_exit_reason(struct vcpu_ctx *vcpu)
 
 static void register_generic_handlers(struct handler_ctx *ctx)
 {
-    static const vmexit_cbk_t GENERIC_HANDLERS[] = {
+    static const vmexit_cbk_t GENERIC_HANDLERS[MAX_EXIT_HANDLERS] = {
         [VMX_EXIT_REASON_CPUID] = handle_cpuid,
         [VMX_EXIT_REASON_XSETBV] = handle_xsetbv,
         [VMX_EXIT_REASON_INVD] = handle_invd,
