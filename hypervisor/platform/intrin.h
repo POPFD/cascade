@@ -9,6 +9,7 @@ extern __attribute__((ms_abi)) uint64_t __readcr0();
 extern __attribute__((ms_abi)) uint64_t __readcr3();
 extern __attribute__((ms_abi)) uint64_t __readcr4();
 extern __attribute__((ms_abi)) uint64_t __readdr7();
+extern __attribute__((ms_abi)) uint64_t __rdtsc(void);
 extern __attribute__((ms_abi)) void __writecr0(uint64_t cr0);
 extern __attribute__((ms_abi)) void __writecr3(uint64_t cr3);
 extern __attribute__((ms_abi)) void __writecr4(uint64_t cr4);

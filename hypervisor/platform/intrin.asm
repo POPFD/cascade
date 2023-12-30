@@ -5,6 +5,7 @@ global __readcr0
 global __readcr3
 global __readcr4
 global __readdr7
+global __rdtsc
 global __writecr0
 global __writecr3
 global __writecr4
@@ -48,6 +49,10 @@ __readcr4:
 
 __readdr7:
     mov rax, dr7
+    ret
+
+__rdtsc:
+    rdtsc
     ret
 
 __writecr0:
