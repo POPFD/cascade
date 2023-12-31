@@ -126,9 +126,9 @@ struct task_state_segment_64
 #pragma pack(pop)
 
 struct gdt_config {
-    segment_descriptor_register_64 guest_gdtr;
-    segment_descriptor_register_64 host_gdtr;
-    segment_descriptor_64 host_gdt[32];
+    __attribute__ ((aligned (16))) segment_descriptor_64 host_gdt[32];
+    __attribute__ ((aligned (16))) segment_descriptor_register_64 guest_gdtr;
+    __attribute__ ((aligned (16))) segment_descriptor_register_64 host_gdtr;
     segment_selector guest_ldtr;
     segment_selector host_tr;
     struct task_state_segment_64 host_tss;
