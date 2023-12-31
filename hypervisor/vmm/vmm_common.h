@@ -55,6 +55,7 @@ struct vcpu_ctx {
     __attribute__ ((aligned (PAGE_SIZE))) vmcs guest_vmcs;
     __attribute__ ((aligned (PAGE_SIZE))) uint8_t msr_trap_bitmap[PAGE_SIZE];
 
+    struct vcpu_context hyperjack_context;
     struct control_registers guest_ctrl_regs;
     struct vcpu_context guest_context;
     struct gdt_config gdt_cfg;
@@ -64,7 +65,7 @@ struct vcpu_ctx {
     struct nested_ctx *nested;
     size_t idx;
 
-    bool running_as_guest;
+    bool launched;
     size_t last_ignored_msr;
 };
 

@@ -256,7 +256,7 @@ static void setup_vmcs_host(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
     /* Configure the host context, as we're hyperjacking we want
      * to clone the original context as much as possible for ease
      * of use. */
-    struct vcpu_context *guest_ctx = &vcpu->guest_context;
+    struct vcpu_context *guest_ctx = &vcpu->hyperjack_context;
 
     /* Write all of the selectors, ignoring the RPL for each field
      * as the host environment will always be ring-0. */
@@ -324,13 +324,13 @@ __attribute__((noreturn)) static void vmm_hyperjack_handler(void)
      * code path where the initial init_routine_per_vcpu::__capture_context
      * took place.
      *
-     * This time with the running_as_guest flag set, therefore the driver
+     * This time with the launched flag set, therefore the driver
      * should then exit successfully.
      */
     struct vcpu_ctx *vcpu = vmm_get_vcpu_ctx();
 
-    vcpu->running_as_guest = true;
-    __restore_context(&vcpu->guest_context);
+    vcpu->launched = true;
+    __restore_context(&vcpu->hyperjack_context);
     die_on(true, "Shouldn't be here context should have been restored.");
 }
 
@@ -349,7 +349,7 @@ static void setup_vmcs_guest(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
         segment_descriptor_register_64 *gdtr;
     };
 
-    struct vcpu_context *guest_ctx = &vcpu->guest_context;
+    struct vcpu_context *guest_ctx = &vcpu->hyperjack_context;
 
     const struct gdt_config vmcs_gdt_list[] = {
         {
@@ -647,13 +647,13 @@ static void __attribute__((ms_abi)) init_routine_per_vcpu(void *opaque)
     /* Capturing control registers & context for the vCPU,
      * as to what the guest should be restored to once hyperjacked. */
     capture_control_regs(&vcpu->guest_ctrl_regs);
-    __capture_context(&vcpu->guest_context);
+    __capture_context(&vcpu->hyperjack_context);
 
     /* First pass (before hypervised) this shall be false as we
      * haven't hyperjacked yet. Upon restoration of the context
      * from within the guest (which will lead us up to just after __capture_context)
      * we need to do nothing and effectively "complete" loading of the driver. */
-    if (!vcpu->running_as_guest) {
+    if (!vcpu->launched) {
         enter_root_mode(vcpu);
 
         /* Set up VMCS */

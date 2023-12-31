@@ -448,7 +448,6 @@ __attribute__((ms_abi)) void handler_guest_to_host(struct vcpu_context *guest_ct
     struct vcpu_ctx *vcpu = vmm_get_vcpu_ctx();
 
     /* Indicate running as host and then copy the guest context from stack to vcpu struct. */
-    vcpu->running_as_guest = false;
     vcpu->guest_context = *guest_ctx;
 
     /* Handle the VMEXIT reason. */
