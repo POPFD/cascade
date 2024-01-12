@@ -25,18 +25,6 @@ void serial_init(void)
 	outb(SERIAL_PORT + 3, 0x03);	/* 8 bits, no parity, one stop bit. */
 	outb(SERIAL_PORT + 2, 0xC7);	/* Enable FIFO, clear them with 14-byte threshold. */
 	outb(SERIAL_PORT + 4, 0x0B);	/* IRQs enabled, RTS/DSR set. */
-
-	outb(SERIAL_PORT + 4, 0x1E);	/* Set in loopback mode, test the serial chip. */
-
-	outb(SERIAL_PORT + 0, 0xAE);	/* Set byte 0xAE over serial. */
-
-	if (inb(SERIAL_PORT + 0) != 0xAE)
-	{
-		/* Something went wrong. */
-        while (1) {};
-	}
-
-	/* If not faulty we are good, so disable loopback. */
 	outb(SERIAL_PORT + 4, 0x0F);
 }
 
