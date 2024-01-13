@@ -76,11 +76,11 @@ void idt_exception_handler(const struct exception_stack *stack)
     (void)stack;
 
     /* If it is an interrupt that is device specific we should deal with this properly. */
-    die_on(stack->interrupt_number < 0x20, "Unhandled interrupt rip %lX vec 0x%X[%d] err 0x%X",
+    die_on(stack->interrupt_number < 0x20, "Unhandled interrupt rip %lX vec 0x%X[%d] err 0x%X cr2=0x%lX",
            stack->rip,
            stack->interrupt_number,
            stack->interrupt_number,
-           stack->error_code);
+           stack->error_code, __readcr2());
 
     /*
      * Set the pending interrupt within the VMM, on this vCPU's next

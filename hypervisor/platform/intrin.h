@@ -6,6 +6,7 @@
 
 extern __attribute__((ms_abi)) uint16_t __readcs();
 extern __attribute__((ms_abi)) uint64_t __readcr0();
+extern __attribute__((ms_abi)) uint64_t __readcr2();
 extern __attribute__((ms_abi)) uint64_t __readcr3();
 extern __attribute__((ms_abi)) uint64_t __readcr4();
 extern __attribute__((ms_abi)) uint64_t __readdr7();

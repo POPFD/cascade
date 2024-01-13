@@ -2,6 +2,7 @@ section .text
 
 global __readcs
 global __readcr0
+global __readcr2
 global __readcr3
 global __readcr4
 global __readdr7
@@ -37,6 +38,10 @@ __readcs:
 
 __readcr0:
     mov rax, cr0
+    ret
+
+__readcr2:
+    mov rax, cr2
     ret
 
 __readcr3:
