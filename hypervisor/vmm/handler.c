@@ -316,8 +316,11 @@ static void handle_exit_reason(struct vcpu_ctx *vcpu)
     struct vmexit_handler *exit_head = ctx->handlers[reason];
 
     /* Check to see if we actually have a handler for it. */
-    die_on(!exit_head, "No exit reason handlers for 0x%lX at rip 0x%lX present",
-           reason, vcpu->guest_context.rip);
+    uint8_t *rip_bytes = (uint8_t *)vcpu->guest_context.rip;
+    die_on(!exit_head, "vcpu=%d no exit reason handlers for 0x%lX at rip 0x%lX "
+           "rip[0]=%02X rip[1]=%02X rip[2]=%02X rip[3]=%02X rip[4]=%02X rip[5]=%02X",
+           vcpu->idx, reason, vcpu->guest_context.rip,
+           rip_bytes[0], rip_bytes[1], rip_bytes[2], rip_bytes[3], rip_bytes[4], rip_bytes[5]);
 
     /* Iterate from tail to head calling each, stop at override. */
     struct vmexit_handler *curr_handler = exit_head->prev;
