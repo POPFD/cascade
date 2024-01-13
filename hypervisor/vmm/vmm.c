@@ -296,6 +296,9 @@ static void setup_vmcs_host(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
     __vmwrite(VMCS_HOST_CR3, vmm->init.host_cr3.flags);
     __vmwrite(VMCS_HOST_CR4, vcpu->guest_ctrl_regs.reg_cr4.flags);
 
+    /* Extended feature enable registers. */
+    __vmwrite(VMCS_HOST_EFER, rdmsr(IA32_EFER));
+
     /*
     * Load the hypervisor entrypoint and stack. We give ourselves a standard
     * size kernel stack (24KB) and bias for the context structure that the
@@ -579,6 +582,7 @@ static void setup_vmcs_generic(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
     exit_ctls.save_debug_controls = true;
     exit_ctls.save_ia32_efer = true;
     exit_ctls.host_address_space_size = true;
+    exit_ctls.load_ia32_efer = true;
     encoded = encode_msr(rdmsr(IA32_VMX_TRUE_EXIT_CTLS), exit_ctls.flags);
     __vmwrite(VMCS_CTRL_EXIT, encoded);
 
