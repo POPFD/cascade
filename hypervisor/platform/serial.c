@@ -26,6 +26,10 @@ void serial_init(void)
 	outb(SERIAL_PORT + 2, 0xC7);	/* Enable FIFO, clear them with 14-byte threshold. */
 	outb(SERIAL_PORT + 4, 0x0B);	/* IRQs enabled, RTS/DSR set. */
 	outb(SERIAL_PORT + 4, 0x0F);
+
+	/* Clear the screen & set home position. */
+	serial_print("\033[2J");
+	serial_print("\033[H");
 }
 
 void serial_print(char *str)
