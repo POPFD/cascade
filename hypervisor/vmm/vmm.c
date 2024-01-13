@@ -184,11 +184,8 @@ static void enter_root_mode(struct vcpu_ctx *vcpu)
     vcpu->guest_vmcs.revision_id = basic.vmcs_revision_id;
 
     /* Set the fixed requirements for the control registers for VMX. */
-    vcpu->guest_ctrl_regs.reg_cr0.flags &= (uint32_t)rdmsr(IA32_VMX_CR0_FIXED1);
-    vcpu->guest_ctrl_regs.reg_cr0.flags |= (uint32_t)rdmsr(IA32_VMX_CR0_FIXED0);
-
-    vcpu->guest_ctrl_regs.reg_cr4.flags &= (uint32_t)rdmsr(IA32_VMX_CR4_FIXED1);
-    vcpu->guest_ctrl_regs.reg_cr4.flags |= (uint32_t)rdmsr(IA32_VMX_CR4_FIXED0);
+    vcpu->guest_ctrl_regs.reg_cr0 = vmm_adjust_cr0(vcpu->guest_ctrl_regs.reg_cr0);
+    vcpu->guest_ctrl_regs.reg_cr4 = vmm_adjust_cr4(vcpu->guest_ctrl_regs.reg_cr4);
 
     /* Update host CR0/4 with new updated fields. */
     __writecr0(vcpu->guest_ctrl_regs.reg_cr0.flags);
@@ -313,7 +310,7 @@ static void setup_vmcs_host(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
 
     __vmwrite(VMCS_HOST_RSP, host_rsp);
     __vmwrite(VMCS_HOST_RIP, host_rip);
-    DEBUG_PRINT("VMCS_HOST_RIP: 0x%lX VMCS_HOST_RSP", host_rip, host_rsp);
+    DEBUG_PRINT("VMCS_HOST_RIP: 0x%lX VMCS_HOST_RSP: 0x%lX", host_rip, host_rsp);
 }
 
 __attribute__((noreturn)) static void vmm_hyperjack_handler(void)
@@ -475,8 +472,9 @@ static void setup_vmcs_guest(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
      * and therefore we then indicate that VMXE is not indicated by clearing
      * the VMXE bit in the CR4 read shadow.
      */
+
     __vmwrite(VMCS_CTRL_CR4_MASK, CR4_VMXE_MASK);
-    __vmwrite(VMCS_CTRL_CR4_READ_SHADOW, vcpu->guest_ctrl_regs.reg_cr4.flags & ~CR4_VMXE_MASK);
+    __vmwrite(VMCS_CTRL_CR4_READ_SHADOW, vcpu->guest_ctrl_regs.reg_cr4.flags);
     __vmwrite(VMCS_GUEST_CR4, vcpu->guest_ctrl_regs.reg_cr4.flags);
 
     /* Debug kernel registers. */

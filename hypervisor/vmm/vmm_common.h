@@ -173,6 +173,38 @@ static inline bool is_noncanonical_address(uint64_t la)
 	return get_canonical(la, vmm_virt_addr_bits()) != la;
 }
 
+static inline cr0 vmm_adjust_cr0(cr0 old_cr0)
+{
+    cr0 fixed0, fixed1;
+    cr0 new_cr0 = old_cr0;
+    fixed0.flags = rdmsr(IA32_VMX_CR0_FIXED0);
+    fixed1.flags = rdmsr(IA32_VMX_CR0_FIXED1);
+
+    new_cr0.flags &= fixed1.flags;
+    new_cr0.flags |= fixed0.flags;
+
+    DEBUG_PRINT("old_cr0=0x%lX new_cr0=0x%lX fixed0=0x%lX fixed1=0x%lX",
+                old_cr0.flags, new_cr0.flags, fixed0.flags, fixed1.flags);
+
+    return new_cr0;
+}
+
+static inline cr4 vmm_adjust_cr4(cr4 old_cr4)
+{
+    cr4 fixed0, fixed1;
+    cr4 new_cr4 = old_cr4;
+    fixed0.flags = rdmsr(IA32_VMX_CR4_FIXED0);
+    fixed1.flags = rdmsr(IA32_VMX_CR4_FIXED1);
+
+    new_cr4.flags &= fixed1.flags;
+    new_cr4.flags |= fixed0.flags;
+
+    DEBUG_PRINT("old_cr4=0x%lX new_cr4=0x%lX fixed0=0x%lX fixed1=0x%lX",
+                old_cr4.flags, new_cr4.flags, fixed0.flags, fixed1.flags);
+
+    return new_cr4;
+}
+
 void vmm_inject_guest_event(exception_vector vector, exception_error_code code);
 
 #endif /* VMM_COMMON_H */
