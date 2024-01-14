@@ -58,6 +58,8 @@ __readdr7:
 
 __rdtsc:
     rdtsc
+    shl rdx, 32
+    or rax, rdx
     ret
 
 __writecr0:
