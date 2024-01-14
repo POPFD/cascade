@@ -477,7 +477,7 @@ static void setup_vmcs_guest(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
      */
 
     __vmwrite(VMCS_CTRL_CR4_MASK, CR4_VMXE_MASK);
-    __vmwrite(VMCS_CTRL_CR4_READ_SHADOW, vcpu->guest_ctrl_regs.reg_cr4.flags);
+    __vmwrite(VMCS_CTRL_CR4_READ_SHADOW, vcpu->guest_ctrl_regs.reg_cr4.flags & ~CR4_VMXE_MASK);
     __vmwrite(VMCS_GUEST_CR4, vcpu->guest_ctrl_regs.reg_cr4.flags);
 
     /* Debug kernel registers. */
