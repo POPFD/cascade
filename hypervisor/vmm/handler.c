@@ -299,6 +299,115 @@ static void handle_sipi(struct vcpu_ctx *vcpu, void *opaque, bool *move_to_next)
     *move_to_next = false;
 }
 
+static void dump_guest_state(void)
+{
+    //
+    // 16-Bit Guest-State Fields
+    //
+    debug_print("Guest ES Selector              = %016llx", __vmread(VMCS_GUEST_ES_SEL));
+    debug_print("Guest CS Selector              = %016llx", __vmread(VMCS_GUEST_CS_SEL));
+    debug_print("Guest SS Selector              = %016llx", __vmread(VMCS_GUEST_SS_SEL));
+    debug_print("Guest DS Selector              = %016llx", __vmread(VMCS_GUEST_DS_SEL));
+    debug_print("Guest FS Selector              = %016llx", __vmread(VMCS_GUEST_FS_SEL));
+    debug_print("Guest GS Selector              = %016llx", __vmread(VMCS_GUEST_GS_SEL));
+    debug_print("Guest LDTR Selector            = %016llx", __vmread(VMCS_GUEST_LDTR_SEL));
+    debug_print("Guest TR Selector              = %016llx", __vmread(VMCS_GUEST_TR_SEL));
+    debug_print("Guest interrupt status         = %016llx", __vmread(VMCS_GUEST_INTR_STATUS));
+    debug_print("PML index                      = %016llx", __vmread(VMCS_GUEST_PML_INDEX));
+
+    //
+    // 64-Bit Guest-State Fields
+    //
+    debug_print("VMCS link pointer              = %016llx", __vmread(VMCS_GUEST_VMCS_LINK_PTR));
+    debug_print("Guest IA32_DEBUGCTL            = %016llx", __vmread(VMCS_GUEST_DEBUGCTL));
+    debug_print("Guest IA32_PAT                 = %016llx", __vmread(VMCS_GUEST_PAT));
+    debug_print("Guest IA32_EFER                = %016llx", __vmread(VMCS_GUEST_EFER));
+    debug_print("Guest IA32_PERF_GLOBAL_CTRL    = %016llx", __vmread(VMCS_GUEST_PERF_GLOBAL_CTRL));
+    debug_print("Guest PDPTE0                   = %016llx", __vmread(VMCS_GUEST_PDPTE0));
+    debug_print("Guest PDPTE1                   = %016llx", __vmread(VMCS_GUEST_PDPTE1));
+    debug_print("Guest PDPTE2                   = %016llx", __vmread(VMCS_GUEST_PDPTE2));
+    debug_print("Guest PDPTE3                   = %016llx", __vmread(VMCS_GUEST_PDPTE3));
+    debug_print("Guest IA32_BNDCFGS             = %016llx", __vmread(VMCS_GUEST_BNDCFGS));
+    debug_print("Guest IA32_RTIT_CTL            = %016llx", __vmread(VMCS_GUEST_RTIT_CTL));
+
+    //
+    // 32-Bit Guest-State Fields
+    //
+    debug_print("Guest ES Limit                 = %016llx", __vmread(VMCS_GUEST_ES_LIMIT));
+    debug_print("Guest CS Limit                 = %016llx", __vmread(VMCS_GUEST_CS_LIMIT));
+    debug_print("Guest SS Limit                 = %016llx", __vmread(VMCS_GUEST_SS_LIMIT));
+    debug_print("Guest DS Limit                 = %016llx", __vmread(VMCS_GUEST_DS_LIMIT));
+    debug_print("Guest FS Limit                 = %016llx", __vmread(VMCS_GUEST_FS_LIMIT));
+    debug_print("Guest GS Limit                 = %016llx", __vmread(VMCS_GUEST_GS_LIMIT));
+    debug_print("Guest LDTR Limit               = %016llx", __vmread(VMCS_GUEST_LDTR_LIMIT));
+    debug_print("Guest TR Limit                 = %016llx", __vmread(VMCS_GUEST_TR_LIMIT));
+    debug_print("Guest GDTR limit               = %016llx", __vmread(VMCS_GUEST_GDTR_LIMIT));
+    debug_print("Guest IDTR limit               = %016llx", __vmread(VMCS_GUEST_IDTR_LIMIT));
+    debug_print("Guest ES access rights         = %016llx", __vmread(VMCS_GUEST_ES_ACCESS_RIGHTS));
+    debug_print("Guest CS access rights         = %016llx", __vmread(VMCS_GUEST_CS_ACCESS_RIGHTS));
+    debug_print("Guest SS access rights         = %016llx", __vmread(VMCS_GUEST_SS_ACCESS_RIGHTS));
+    debug_print("Guest DS access rights         = %016llx", __vmread(VMCS_GUEST_DS_ACCESS_RIGHTS));
+    debug_print("Guest FS access rights         = %016llx", __vmread(VMCS_GUEST_FS_ACCESS_RIGHTS));
+    debug_print("Guest GS access rights         = %016llx", __vmread(VMCS_GUEST_GS_ACCESS_RIGHTS));
+    debug_print("Guest LDTR access rights       = %016llx", __vmread(VMCS_GUEST_LDTR_ACCESS_RIGHTS));
+    debug_print("Guest TR access rights         = %016llx", __vmread(VMCS_GUEST_TR_ACCESS_RIGHTS));
+    debug_print("Guest interruptibility state   = %016llx", __vmread(VMCS_GUEST_INTERRUPTIBILITY_STATE));
+    debug_print("Guest activity state           = %016llx", __vmread(VMCS_GUEST_ACTIVITY_STATE));
+    debug_print("Guest SMBASE                   = %016llx", __vmread(VMCS_GUEST_SMBASE));
+    debug_print("Guest IA32_SYSENTER_CS         = %016llx", __vmread(VMCS_GUEST_SYSENTER_CS));
+    debug_print("VMX-preemption timer value     = %016llx", __vmread(VMCS_GUEST_PREEMPT_TIMER_VALUE));
+
+    //
+    // Natural-Width Guest-State Fields
+    //
+    debug_print("Guest CR0                      = %016llx", __vmread(VMCS_GUEST_CR0));
+    debug_print("Guest CR3                      = %016llx", __vmread(VMCS_GUEST_CR3));
+    debug_print("Guest CR4                      = %016llx", __vmread(VMCS_GUEST_CR4));
+    debug_print("Guest ES Base                  = %016llx", __vmread(VMCS_GUEST_ES_BASE));
+    debug_print("Guest CS Base                  = %016llx", __vmread(VMCS_GUEST_CS_BASE));
+    debug_print("Guest SS Base                  = %016llx", __vmread(VMCS_GUEST_SS_BASE));
+    debug_print("Guest DS Base                  = %016llx", __vmread(VMCS_GUEST_DS_BASE));
+    debug_print("Guest FS Base                  = %016llx", __vmread(VMCS_GUEST_FS_BASE));
+    debug_print("Guest GS Base                  = %016llx", __vmread(VMCS_GUEST_GS_BASE));
+    debug_print("Guest LDTR base                = %016llx", __vmread(VMCS_GUEST_LDTR_BASE));
+    debug_print("Guest TR base                  = %016llx", __vmread(VMCS_GUEST_TR_BASE));
+    debug_print("Guest GDTR base                = %016llx", __vmread(VMCS_GUEST_GDTR_BASE));
+    debug_print("Guest IDTR base                = %016llx", __vmread(VMCS_GUEST_IDTR_BASE));
+    debug_print("Guest DR7                      = %016llx", __vmread(VMCS_GUEST_DR7));
+    debug_print("Guest RSP                      = %016llx", __vmread(VMCS_GUEST_RSP));
+    debug_print("Guest RIP                      = %016llx", __vmread(VMCS_GUEST_RIP));
+    debug_print("Guest RFLAGS                   = %016llx", __vmread(VMCS_GUEST_RFLAGS));
+    debug_print("Guest pending debug exceptions = %016llx", __vmread(VMCS_GUEST_PENDING_DEBUG_EXCEPTIONS));
+    debug_print("Guest IA32_SYSENTER_ESP        = %016llx", __vmread(VMCS_GUEST_SYSENTER_ESP));
+    debug_print("Guest IA32_SYSENTER_EIP        = %016llx", __vmread(VMCS_GUEST_SYSENTER_EIP));
+}
+
+static void dump_guest_page(void)
+{
+    static const int PRINT_PER_LINE = 32;
+    uintptr_t guest_rip = __vmread(VMCS_GUEST_RIP);
+    uint8_t *page_start = (uint8_t *)(guest_rip & ~0xFFFull);
+    uint8_t *page_end = (uint8_t *)(page_start + PAGE_SIZE);
+
+    debug_print("Dumping guest page of RIP=0x%lX 0x%lX-0x%lX", guest_rip, page_start, page_end);
+
+    for (uint8_t* current = page_start; current < page_end; current += PRINT_PER_LINE) {
+        print_buffer("0x%016lX          ", current);
+        for (int i = 0; i < PRINT_PER_LINE; i++) {
+            print_buffer("%02X ", current[i]);
+        }
+        print_buffer("\r\n");
+    }
+    print_buffer("\r\n");
+}
+
+static void dump_state(struct vcpu_ctx *vcpu)
+{
+    (void)vcpu;
+    dump_guest_state();
+    dump_guest_page();
+}
+
 static void handle_exit_reason(struct vcpu_ctx *vcpu)
 {
     /* Retrieve the handler context from the vCPU. */
@@ -315,12 +424,16 @@ static void handle_exit_reason(struct vcpu_ctx *vcpu)
 
     struct vmexit_handler *exit_head = ctx->handlers[reason];
 
-    /* Check to see if we actually have a handler for it. */
-    uint8_t *rip_bytes = (uint8_t *)vcpu->guest_context.rip;
-    die_on(!exit_head, "vcpu=%d no exit reason handlers for 0x%lX at rip 0x%lX "
-           "rip[0]=%02X rip[1]=%02X rip[2]=%02X rip[3]=%02X rip[4]=%02X rip[5]=%02X",
-           vcpu->idx, reason, vcpu->guest_context.rip,
-           rip_bytes[0], rip_bytes[1], rip_bytes[2], rip_bytes[3], rip_bytes[4], rip_bytes[5]);
+
+    if (!exit_head) {
+        dump_state(vcpu);
+        /* Check to see if we actually have a handler for it. */
+        uint8_t *rip_bytes = (uint8_t *)vcpu->guest_context.rip;
+        die_on(!exit_head, "vcpu=%d no exit reason handlers for 0x%lX at rip 0x%lX "
+            "rip[0]=%02X rip[1]=%02X rip[2]=%02X rip[3]=%02X rip[4]=%02X rip[5]=%02X",
+            vcpu->idx, reason, vcpu->guest_context.rip,
+            rip_bytes[0], rip_bytes[1], rip_bytes[2], rip_bytes[3], rip_bytes[4], rip_bytes[5]);
+    }
 
     /* Iterate from tail to head calling each, stop at override. */
     struct vmexit_handler *curr_handler = exit_head->prev;
