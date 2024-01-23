@@ -154,148 +154,142 @@ static void handle_invd(struct vcpu_ctx *vcpu, void *opaque, bool *move_to_next)
 
 static void handle_init_signal(struct vcpu_ctx *vcpu, void *opaque, bool *move_to_next)
 {
-    (void)vcpu;
     (void)opaque;
 
+    /* Control registers. */
+    cr0 guest_cr0 = {
+        .extension_type = true,
+        .numeric_error = true,
+        .not_write_through = true,
+        .cache_disable = true
+    };
+
+    __vmwrite(VMCS_GUEST_CR0, guest_cr0.flags);
+
+    __vmwrite(VMCS_GUEST_CR3, 0);
+
+    cr4 guest_cr4 = { 
+        .vmx_enable = true
+     };
+    __vmwrite(VMCS_GUEST_CR4, guest_cr4.flags);
+
+    /* Configure the GDT entries & access rights. */
+    vmx_segment_access_rights guest_ar = { 0 };
+    guest_ar.type = SEGMENT_DESCRIPTOR_TYPE_CODE_ERA;
+    guest_ar.descriptor_type = true;
+    guest_ar.present = true;
+
+    __vmwrite(VMCS_GUEST_CS_SEL, 0xf000);
+    __vmwrite(VMCS_GUEST_CS_BASE, 0xffff0000);
+    __vmwrite(VMCS_GUEST_CS_LIMIT, 0xffff);
+    __vmwrite(VMCS_GUEST_CS_ACCESS_RIGHTS, guest_ar.flags);
+
+    guest_ar.type = SEGMENT_DESCRIPTOR_TYPE_DATA_RWA;
+    __vmwrite(VMCS_GUEST_SS_SEL, 0);
+    __vmwrite(VMCS_GUEST_SS_BASE, 0);
+    __vmwrite(VMCS_GUEST_SS_LIMIT, 0xffff);
+    __vmwrite(VMCS_GUEST_SS_ACCESS_RIGHTS, guest_ar.flags);
+    __vmwrite(VMCS_GUEST_DS_SEL, 0);
+    __vmwrite(VMCS_GUEST_DS_BASE, 0);
+    __vmwrite(VMCS_GUEST_DS_LIMIT, 0xffff);
+    __vmwrite(VMCS_GUEST_DS_ACCESS_RIGHTS, guest_ar.flags);
+    __vmwrite(VMCS_GUEST_ES_SEL, 0);
+    __vmwrite(VMCS_GUEST_ES_BASE, 0);
+    __vmwrite(VMCS_GUEST_ES_LIMIT, 0xffff);
+    __vmwrite(VMCS_GUEST_ES_ACCESS_RIGHTS, guest_ar.flags);
+    __vmwrite(VMCS_GUEST_FS_SEL, 0);
+    __vmwrite(VMCS_GUEST_FS_BASE, 0);
+    __vmwrite(VMCS_GUEST_FS_LIMIT, 0xffff);
+    __vmwrite(VMCS_GUEST_FS_ACCESS_RIGHTS, guest_ar.flags);
+    __vmwrite(VMCS_GUEST_GS_SEL, 0);
+    __vmwrite(VMCS_GUEST_GS_BASE, 0);
+    __vmwrite(VMCS_GUEST_GS_LIMIT, 0xffff);
+    __vmwrite(VMCS_GUEST_GS_ACCESS_RIGHTS, guest_ar.flags);
+
+    __vmwrite(VMCS_GUEST_GDTR_BASE, 0);
+    __vmwrite(VMCS_GUEST_GDTR_LIMIT, 0xffff);
+    __vmwrite(VMCS_GUEST_IDTR_BASE, 0);
+    __vmwrite(VMCS_GUEST_IDTR_LIMIT, 0xffff);
+
+    guest_ar.type = SEGMENT_DESCRIPTOR_TYPE_LDT;
+    guest_ar.descriptor_type = false;
+    __vmwrite(VMCS_GUEST_LDTR_SEL, 0);
+    __vmwrite(VMCS_GUEST_LDTR_BASE, 0);
+    __vmwrite(VMCS_GUEST_LDTR_LIMIT, 0xffff);
+    __vmwrite(VMCS_GUEST_LDTR_ACCESS_RIGHTS, guest_ar.flags);
+
+    guest_ar.type = SEGMENT_DESCRIPTOR_TYPE_TSS_BUSY;
+    __vmwrite(VMCS_GUEST_TR_SEL, 0);
+    __vmwrite(VMCS_GUEST_TR_BASE, 0);
+    __vmwrite(VMCS_GUEST_TR_LIMIT, 0xffff);
+    __vmwrite(VMCS_GUEST_TR_ACCESS_RIGHTS, guest_ar.flags);
+
+    /* Configure some extra functionality. */
+    __vmwrite(VMCS_GUEST_EFER, 0);
+    __vmwrite(VMCS_GUEST_FS_BASE, 0);
+    __vmwrite(VMCS_GUEST_GS_BASE, 0);
+
+    /* Configure the debug registers. */
+    // __writedr(0, 0);
+    // __writedr(1, 0);
+    // __writedr(2, 0);
+    // __writedr(3, 0);
+    // __writedr(6, 0xffff0ff0);
+    __vmwrite(VMCS_GUEST_DR7, 0x400);
+
+    /* Configure the guest context. */
+    struct vcpu_context *guest_context = &vcpu->guest_context;
+
+    cpuid_eax_01 version_info;
+    CPUID_LEAF_READ(CPUID_VERSION_INFO, version_info);
+    guest_context->rdx = 0x600 | ((uint64_t)version_info.eax.extended_model_id << 16);
+    guest_context->rbx = 0;
+    guest_context->rcx = 0;
+    guest_context->rsi = 0;
+    guest_context->rdi = 0;
+    guest_context->rbp = 0;
+    guest_context->r8 = 0;
+    guest_context->r9 = 0;
+    guest_context->r10 = 0;
+    guest_context->r11 = 0;
+    guest_context->r12 = 0;
+    guest_context->r13 = 0;
+    guest_context->r14 = 0;
+    guest_context->r15 = 0;
+
+    /* Configure instruction pointer, stack etc. */
+    rfl guest_rflags = {
+        .read_as_1 = true
+    };
+
+    __vmwrite(VMCS_GUEST_RFLAGS, guest_rflags.flags);
+    __vmwrite(VMCS_GUEST_RIP, 0xfff0);
+    __vmwrite(VMCS_GUEST_RSP, 0);
+
+    /* Configure the entry controls. */
+    ia32_vmx_entry_ctls_register entry_ctls = {
+        .flags = __vmread(VMCS_CTRL_ENTRY)
+    };
+    entry_ctls.ia32e_mode_guest = false;
+    __vmwrite(VMCS_CTRL_ENTRY, entry_ctls.flags);
+
+    /* Indicate we are waiting for SIPI. */
     __vmwrite(VMCS_GUEST_ACTIVITY_STATE, vmx_wait_for_sipi);
     *move_to_next = false;
 }
 
 static void handle_sipi(struct vcpu_ctx *vcpu, void *opaque, bool *move_to_next)
 {
-#define SEGMENT_LIMIT_DEFAULT 0xFFFF
-
+    (void)vcpu;
     (void)opaque;
 
-	/* Use the exit qualification to gather the SIPI vector.
-	 * Only bits 7:0 contain the vector, the rest are zero'd. */
-	uint64_t sipi_vector = __vmread(VMCS_EXIT_QUALIFICATION);
+    uint64_t vector = __vmread(VMCS_EXIT_QUALIFICATION);
 
-    /* Initialise all the VMCS fields to initial values. */
-
-    /* Set up the guest control registers. */
-    cr0 guest_cr0;
-    guest_cr0.flags = 0;
-    guest_cr0.extension_type = true;
-    guest_cr0.numeric_error = true;
-    guest_cr0.not_write_through = true;
-    guest_cr0.cache_disable = true;
-    __vmwrite(VMCS_GUEST_CR0, guest_cr0.flags);
-
-    cr4 guest_cr4;
-    guest_cr4.flags = 0;
-    guest_cr4.vmx_enable = true;
-    __vmwrite(VMCS_GUEST_CR4, guest_cr4.flags);
-
-    cr3 guest_cr3;
-    guest_cr3.flags = 0;
-    __vmwrite(VMCS_GUEST_CR3, guest_cr3.flags);
-
-    dr7 guest_dr7;
-    guest_dr7.flags = 0;
-    __vmwrite(VMCS_GUEST_DR7, guest_dr7.flags);
-
-    /* Set up VMCS guest registers. */
-    rfl guest_rfl;
-    guest_rfl.flags = 0;
-    guest_rfl.read_as_1 = true;
-    __vmwrite(VMCS_GUEST_RFLAGS, guest_rfl.flags);
-
-    __vmwrite(VMCS_GUEST_RSP, 0);
+    __vmwrite(VMCS_GUEST_CS_SEL, vector << 8);
+    __vmwrite(VMCS_GUEST_CS_BASE, vector << 12);
     __vmwrite(VMCS_GUEST_RIP, 0);
 
-    /*
-     * Set up the guest segmentation registers.
-     * CS has to be set up using the SIPI vector.
-     * TODO: Actually check if this is true, as per 27.2.1 it states:
-     *  - For a start-up IPI (SIPI), the exit qualification contains the SIPI vector
-     *    informationin bits 7:0. Bits 63:8 of the exit qualification are cleared to 0.
-     */
-    __vmwrite(VMCS_GUEST_CS_SEL, sipi_vector << 8);
-    __vmwrite(VMCS_GUEST_CS_BASE, sipi_vector << 12);
-    __vmwrite(VMCS_GUEST_CS_LIMIT, SEGMENT_LIMIT_DEFAULT);
-    __vmwrite(VMCS_GUEST_CS_ACCESS_RIGHTS, 0x0009B);
-
-    __vmwrite(VMCS_GUEST_DS_SEL, 0);
-    __vmwrite(VMCS_GUEST_DS_BASE, 0);
-    __vmwrite(VMCS_GUEST_DS_LIMIT, SEGMENT_LIMIT_DEFAULT);
-    __vmwrite(VMCS_GUEST_DS_ACCESS_RIGHTS, 0x00093);
-
-    __vmwrite(VMCS_GUEST_ES_SEL, 0);
-    __vmwrite(VMCS_GUEST_ES_BASE, 0);
-    __vmwrite(VMCS_GUEST_ES_LIMIT, SEGMENT_LIMIT_DEFAULT);
-    __vmwrite(VMCS_GUEST_ES_ACCESS_RIGHTS, 0x00093);
-
-    __vmwrite(VMCS_GUEST_FS_SEL, 0);
-    __vmwrite(VMCS_GUEST_FS_BASE, 0);
-    __vmwrite(VMCS_GUEST_FS_LIMIT, SEGMENT_LIMIT_DEFAULT);
-    __vmwrite(VMCS_GUEST_FS_ACCESS_RIGHTS, 0x00093);
-
-    __vmwrite(VMCS_GUEST_GS_SEL, 0);
-    __vmwrite(VMCS_GUEST_GS_BASE, 0);
-    __vmwrite(VMCS_GUEST_GS_LIMIT, SEGMENT_LIMIT_DEFAULT);
-    __vmwrite(VMCS_GUEST_GS_ACCESS_RIGHTS, 0x00093);
-
-    __vmwrite(VMCS_GUEST_SS_SEL, 0);
-    __vmwrite(VMCS_GUEST_SS_BASE, 0);
-    __vmwrite(VMCS_GUEST_SS_LIMIT, SEGMENT_LIMIT_DEFAULT);
-    __vmwrite(VMCS_GUEST_SS_ACCESS_RIGHTS, 0x00093);
-
-    __vmwrite(VMCS_GUEST_TR_SEL, 0);
-    __vmwrite(VMCS_GUEST_TR_BASE, 0);
-    __vmwrite(VMCS_GUEST_TR_LIMIT, SEGMENT_LIMIT_DEFAULT);
-    __vmwrite(VMCS_GUEST_TR_ACCESS_RIGHTS, 0x0008b);
-
-    __vmwrite(VMCS_GUEST_LDTR_SEL, 0);
-    __vmwrite(VMCS_GUEST_LDTR_BASE, 0);
-    __vmwrite(VMCS_GUEST_LDTR_LIMIT, SEGMENT_LIMIT_DEFAULT);
-    __vmwrite(VMCS_GUEST_LDTR_ACCESS_RIGHTS, 0x00082);
-
-    __vmwrite(VMCS_GUEST_GDTR_BASE, 0);
-    __vmwrite(VMCS_GUEST_GDTR_LIMIT, SEGMENT_LIMIT_DEFAULT);
-    __vmwrite(VMCS_GUEST_IDTR_BASE, 0);
-    __vmwrite(VMCS_GUEST_IDTR_LIMIT, SEGMENT_LIMIT_DEFAULT);
-
-    /* Set up other VMCS guest information. */
-    __vmwrite(VMCS_GUEST_EFER, 0);
-
-    __vmwrite(VMCS_GUEST_SYSENTER_CS, 0);
-    __vmwrite(VMCS_GUEST_SYSENTER_EIP, 0);
-    __vmwrite(VMCS_GUEST_SYSENTER_ESP, 0);
-
-    /*
-     * Indicate guest activity is back in active state.
-     * and indicate no pending interrupts etc.
-     */
     __vmwrite(VMCS_GUEST_ACTIVITY_STATE, vmx_active);
-    __vmwrite(VMCS_GUEST_INTERRUPTIBILITY_STATE, 0);
-    __vmwrite(VMCS_GUEST_PENDING_DEBUG_EXCEPTIONS, 0);
-    __vmwrite(VMCS_CTRL_ENTRY_INTERRUPTION_INFO, 0);
-
-    /* Read the previous VM entry controls, but disable IA32E guest mode. */
-    ia32_vmx_entry_ctls_register entryControls;
-    entryControls.flags = __vmread(VMCS_CTRL_ENTRY);
-    entryControls.ia32e_mode_guest = false;
-
-    __vmwrite(VMCS_CTRL_ENTRY, entryControls.flags);
-
-    /* Set the guest registers. */
-    vcpu->guest_context.rdx = 0x600;
-    vcpu->guest_context.rax = 0;
-    vcpu->guest_context.rbx = 0;
-    vcpu->guest_context.rcx = 0;
-    vcpu->guest_context.rsi = 0;
-    vcpu->guest_context.rdi = 0;
-    vcpu->guest_context.rbp = 0;
-    vcpu->guest_context.r8 = 0;
-    vcpu->guest_context.r9 = 0;
-    vcpu->guest_context.r10 = 0;
-    vcpu->guest_context.r11 = 0;
-    vcpu->guest_context.r12 = 0;
-    vcpu->guest_context.r13 = 0;
-    vcpu->guest_context.r14 = 0;
-    vcpu->guest_context.r15 = 0;
-
     *move_to_next = false;
 }
 
