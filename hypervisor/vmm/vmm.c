@@ -452,8 +452,8 @@ static void setup_vmcs_guest(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
     }
 
     /* Now write the GDTR for the guest (due to TR & LDTR restrictions re-use guest). */
-    __vmwrite(VMCS_GUEST_GDTR_BASE, vcpu->gdt_cfg.host_gdtr.base_address);
-    __vmwrite(VMCS_GUEST_GDTR_LIMIT, vcpu->gdt_cfg.host_gdtr.limit);
+    __vmwrite(VMCS_GUEST_GDTR_BASE, vcpu->gdt_cfg.guest_gdtr.base_address);
+    __vmwrite(VMCS_GUEST_GDTR_LIMIT, vcpu->gdt_cfg.guest_gdtr.limit);
 
     /* Now write IDTR, we can ACTUALLY use the guest IDT thank god... */
     __vmwrite(VMCS_GUEST_IDTR_BASE, vmm->init.guest_idtr.base_address);
