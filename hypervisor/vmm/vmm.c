@@ -430,6 +430,18 @@ static void setup_vmcs_guest(struct vmm_ctx *vmm, struct vcpu_ctx *vcpu)
 
         gather_gdt_entry(curr_cfg->gdtr, curr_cfg->sel, &entry);
 
+        /*
+         * This a shitty hack/workaround.
+         * Some BIOS/UEFI environments will temporarily go into protected
+         * mode on the AP's, if this is the case we need to ensure that
+         * any operations that use the stack won't cause a #SS. Really we
+         * should re-build the GDT entries upon re-entry to protected mode
+         * but we can potentially do that in the future if we really need
+         * to.
+         */
+        if (curr_cfg->vmcs_sel == VMCS_GUEST_SS_SEL)
+            entry.limit = UINT32_MAX;
+
         if (curr_cfg->vmcs_sel)
             __vmwrite(curr_cfg->vmcs_sel, entry.sel);
         if (curr_cfg->vmcs_lim)
